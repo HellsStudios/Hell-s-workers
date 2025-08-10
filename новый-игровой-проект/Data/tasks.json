@@ -1,0 +1,13 @@
+[
+  {
+	"description": "Доставить посылку в соседний город",
+	"reward": 500,
+	"duration": 48,
+	"qualification": "Курьер"
+  },
+  {
+	"description": "Исследовать заброшенную шахту",
+	"reward": 1200,
+	"qualification": "Горняк"
+  }
+]

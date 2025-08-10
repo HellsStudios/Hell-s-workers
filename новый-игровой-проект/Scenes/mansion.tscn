@@ -1,0 +1,153 @@
+[gd_scene load_steps=9 format=3 uid="uid://cdw4xi8jdmhhr"]
+
+[ext_resource type="Script" uid="uid://2v4dau4mmixv" path="res://Scenes/mansion.gd" id="1_5jwi0"]
+[ext_resource type="Script" uid="uid://brs16ogkadj40" path="res://Scenes/camera_2d.gd" id="2_exq5i"]
+
+[sub_resource type="Gradient" id="Gradient_exq5i"]
+colors = PackedColorArray(0.984314, 0, 0, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_e6st1"]
+gradient = SubResource("Gradient_exq5i")
+width = 2
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_umc7y"]
+size = Vector2(384, 192)
+
+[sub_resource type="ImageTexture" id="ImageTexture_5jwi0"]
+
+[sub_resource type="Gradient" id="Gradient_5jwi0"]
+colors = PackedColorArray(0, 0, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_exq5i"]
+gradient = SubResource("Gradient_5jwi0")
+width = 50
+height = 50
+
+[node name="Mansion" type="Node2D"]
+script = ExtResource("1_5jwi0")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+limit_left = 0
+limit_top = 0
+limit_right = 3000
+limit_bottom = 2000
+drag_horizontal_enabled = true
+drag_vertical_enabled = true
+drag_left_margin = 1.0
+drag_top_margin = 1.0
+drag_right_margin = 1.0
+drag_bottom_margin = 1.0
+script = ExtResource("2_exq5i")
+
+[node name="Room2" type="Area2D" parent="Camera2D" groups=["rooms"]]
+position = Vector2(600, 104)
+
+[node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room2"]
+rotation = 3.14159
+scale = Vector2(200, 200)
+texture = SubResource("GradientTexture1D_e6st1")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room2"]
+shape = SubResource("RectangleShape2D_umc7y")
+
+[node name="Room3" type="Area2D" parent="Camera2D" groups=["rooms"]]
+position = Vector2(1000, 104)
+
+[node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room3"]
+rotation = 3.14159
+scale = Vector2(200, 200)
+texture = SubResource("GradientTexture1D_e6st1")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room3"]
+shape = SubResource("RectangleShape2D_umc7y")
+
+[node name="CanvasModulate" type="CanvasModulate" parent="Camera2D"]
+z_index = 1
+
+[node name="Room1" type="Area2D" parent="Camera2D" groups=["rooms"]]
+position = Vector2(200, 104)
+
+[node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room1"]
+rotation = 3.14159
+scale = Vector2(200, 200)
+texture = SubResource("GradientTexture1D_e6st1")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room1"]
+shape = SubResource("RectangleShape2D_umc7y")
+
+[node name="Lamp" type="DirectionalLight2D" parent="Camera2D/Room1"]
+visible = false
+color = Color(1, 1, 0.0196078, 1)
+energy = 0.5
+range_z_min = 0
+range_z_max = 0
+
+[node name="Room1PopupPanel" type="PopupPanel" parent="."]
+size = Vector2i(272, 100)
+
+[node name="ButtonExit" type="Button" parent="Room1PopupPanel"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 268.0
+offset_bottom = 96.0
+grow_horizontal = 0
+text = "x"
+icon = SubResource("ImageTexture_5jwi0")
+flat = true
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="PanelResources" type="Panel" parent="UI"]
+z_index = 5
+custom_minimum_size = Vector2(200, 50)
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -200.0
+offset_bottom = 50.0
+grow_horizontal = 0
+
+[node name="ResourcesLabel" type="Label" parent="UI/PanelResources"]
+custom_minimum_size = Vector2(200, 50)
+layout_direction = 2
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+text = "Ресурсы: 0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PanelDay" type="Panel" parent="UI"]
+z_index = 5
+custom_minimum_size = Vector2(200, 50)
+offset_right = 200.0
+offset_bottom = 50.0
+
+[node name="DayLabel" type="Label" parent="UI/PanelDay"]
+custom_minimum_size = Vector2(150, 50)
+layout_direction = 2
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+text = "День: 1 Утро"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="NextDayButton" type="Button" parent="UI/PanelDay"]
+custom_minimum_size = Vector2(50, 50)
+layout_direction = 3
+layout_mode = 0
+offset_right = 58.0
+offset_bottom = 58.0
+icon = SubResource("GradientTexture2D_exq5i")
+
+[connection signal="input_event" from="Camera2D/Room2" to="." method="_on_room_2_input_event"]
+[connection signal="input_event" from="Camera2D/Room3" to="." method="_on_room_3_input_event"]
+[connection signal="input_event" from="Camera2D/Room1" to="." method="_on_room_1_input_event"]
+[connection signal="popup_hide" from="Room1PopupPanel" to="." method="_on_room_1_popup_panel_popup_hide"]
+[connection signal="pressed" from="Room1PopupPanel/ButtonExit" to="." method="_on_button_exit_pressed"]
+[connection signal="button_down" from="UI/PanelDay/NextDayButton" to="." method="_on_NextPhaseButton_pressed"]
+[connection signal="pressed" from="UI/PanelDay/NextDayButton" to="." method="_on_next_day_button_pressed"]

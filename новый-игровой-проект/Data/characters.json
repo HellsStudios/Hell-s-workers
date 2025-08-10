@@ -1,0 +1,38 @@
+{
+  "party": ["Berit", "Sally", "Dante"],
+  "heroes": {
+	"Berit": {
+	  "nick": "Berit",
+	  "team": "hero",
+	  "max_hp": 110, "max_stamina": 60, "max_mana": 60,
+	  "attack": 15, "defense": 10, "speed": 9,
+	  "skills": [
+		{"name":"Мощный удар","desc":"Сильная атака по одному врагу.","cost_stamina":10,"target":"single_enemy","damage":18,"accuracy":0.9,"crit":0.1},
+		{"name":"Размах клинком","desc":"Атака по всем врагам.","cost_stamina":15,"target":"all_enemies","damage":10,"accuracy":0.85,"crit":0.05},
+		{"name":"Защитная стойка","desc":"+Защита на 2 хода.","cost_stamina":6,"target":"self","buff":{"defense":5,"turns":2}}
+	  ]
+	},
+	"Sally": {
+	  "nick": "Sally",
+	  "team": "hero",
+	  "max_hp": 75, "max_stamina": 30, "max_mana": 90,
+	  "attack": 8, "defense": 6, "speed": 12,
+	  "skills": [
+		{"name":"Огненный шар","desc":"Маг. урон по врагу.","cost_mana":12,"target":"single_enemy","damage":20,"accuracy":0.9,"crit":0.2},
+		{"name":"Лечение","desc":"Восстановить союзнику 22 HP.","cost_mana":12,"target":"single_ally","heal":22,"accuracy":1.0},
+		{"name":"Ледяной шип","desc":"Урон и замедление.","cost_mana":10,"target":"single_enemy","damage":14,"accuracy":0.9,"slow":2}
+	  ]
+	},
+	"Dante": {
+	  "nick": "Dante",
+	  "team": "hero",
+	  "max_hp": 90, "max_stamina": 10, "max_mana": 60,
+	  "attack": 10, "defense": 8, "speed": 10,
+	  "skills": [
+		{"name":"Боевой клич","desc":"+Атака всем союзникам (3 хода).","cost_mana":10,"target":"all_allies","buff":{"attack":5,"turns":3}},
+		{"name":"Барьер","desc":"+Защита союзнику (3 хода).","cost_mana":8,"target":"single_ally","buff":{"defense":8,"turns":3}},
+		{"name":"Дезориентация","desc":"Снизить точность врага.","cost_mana":6,"target":"single_enemy","debuff":{"accuracy":-0.2,"turns":2}}
+	  ]
+	}
+  }
+}
