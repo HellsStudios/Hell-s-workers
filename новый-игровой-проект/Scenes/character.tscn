@@ -1,6 +1,6 @@
 [gd_scene load_steps=10 format=3 uid="uid://bqtjl7w1e0u1u"]
 
-[ext_resource type="Script" uid="uid://bokvhdh0dn8fu" path="res://Scenes/Character.gd" id="1_lkv7d"]
+[ext_resource type="Script" uid="uid://bokvhdh0dn8fu" path="res://Scripts/Character.gd" id="1_lkv7d"]
 
 [sub_resource type="Animation" id="Animation_lkv7d"]
 length = 0.001

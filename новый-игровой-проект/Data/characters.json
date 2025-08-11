@@ -4,34 +4,110 @@
 	"Berit": {
 	  "nick": "Berit",
 	  "team": "hero",
-	  "max_hp": 110, "max_stamina": 60, "max_mana": 60,
+	  "max_health": 110, "health": 110,
+	  "max_stamina": 60, "stamina": 60,
+	  "max_mana": 60, "mana": 60,
 	  "attack": 15, "defense": 10, "speed": 9,
 	  "skills": [
-		{"name":"Мощный удар","desc":"Сильная атака по одному врагу.","cost_stamina":10,"target":"single_enemy","damage":18,"accuracy":0.9,"crit":0.1},
-		{"name":"Размах клинком","desc":"Атака по всем врагам.","cost_stamina":15,"target":"all_enemies","damage":10,"accuracy":0.85,"crit":0.05},
-		{"name":"Защитная стойка","desc":"+Защита на 2 хода.","cost_stamina":6,"target":"self","buff":{"defense":5,"turns":2}}
+		{
+		  "name": "Мощный удар",
+		  "type": "physical",
+		  "target": "single_enemy",
+		  "damage": 18, "accuracy": 0.9, "crit": 0.1,
+		  "costs": { "stamina": 10 }
+		},
+		{
+		  "name": "Размах клинком",
+		  "type": "physical",
+		  "target": "all_enemies",
+		  "damage": 10, "accuracy": 0.85, "crit": 0.05,
+		  "costs": { "stamina": 15 }
+		},
+		{
+		  "name": "Защитная стойка",
+		  "type": "physical",
+		  "target": "self",
+		  "effects_to_self": [
+			{ "id": "def_up", "name": "Защита +", "is_buff": true, "defense": 5, "duration": 2 }
+		  ],
+		  "costs": { "stamina": 6 }
+		}
 	  ]
 	},
+
 	"Sally": {
 	  "nick": "Sally",
 	  "team": "hero",
-	  "max_hp": 75, "max_stamina": 30, "max_mana": 90,
+	  "max_health": 75, "health": 75,
+	  "max_stamina": 30, "stamina": 30,
+	  "max_mana": 90, "mana": 90,
 	  "attack": 8, "defense": 6, "speed": 12,
 	  "skills": [
-		{"name":"Огненный шар","desc":"Маг. урон по врагу.","cost_mana":12,"target":"single_enemy","damage":20,"accuracy":0.9,"crit":0.2},
-		{"name":"Лечение","desc":"Восстановить союзнику 22 HP.","cost_mana":12,"target":"single_ally","heal":22,"accuracy":1.0},
-		{"name":"Ледяной шип","desc":"Урон и замедление.","cost_mana":10,"target":"single_enemy","damage":14,"accuracy":0.9,"slow":2}
+		{
+		  "name": "Ядовитый удар",
+		  "type": "physical",
+		  "target": "single_enemy",
+		  "damage": 10, "accuracy": 0.9,
+		  "effects_to_targets": [
+			{ "id": "poison", "name": "Яд", "is_buff": false, "dot": 2, "duration": 3 }
+		  ],
+		  "costs": { "mana": 10 }
+		},
+		{
+		  "name": "Лечение",
+		  "type": "magic",
+		  "target": "single_ally",
+		  "heal": 22, "accuracy": 1.0,
+		  "costs": { "mana": 12 }
+		},
+		{
+		  "name": "Ледяной шип",
+		  "type": "magic",
+		  "target": "single_enemy",
+		  "damage": 14, "accuracy": 0.9,
+		  "effects_to_targets": [
+			{ "id": "slow", "name": "Замедление", "is_buff": false, "speed": -2, "duration": 2 }
+		  ],
+		  "costs": { "mana": 10 }
+		}
 	  ]
 	},
+
 	"Dante": {
 	  "nick": "Dante",
 	  "team": "hero",
-	  "max_hp": 90, "max_stamina": 10, "max_mana": 60,
+	  "max_health": 90, "health": 90,
+	  "max_stamina": 10, "stamina": 10,
+	  "max_mana": 60, "mana": 60,
 	  "attack": 10, "defense": 8, "speed": 10,
 	  "skills": [
-		{"name":"Боевой клич","desc":"+Атака всем союзникам (3 хода).","cost_mana":10,"target":"all_allies","buff":{"attack":5,"turns":3}},
-		{"name":"Барьер","desc":"+Защита союзнику (3 хода).","cost_mana":8,"target":"single_ally","buff":{"defense":8,"turns":3}},
-		{"name":"Дезориентация","desc":"Снизить точность врага.","cost_mana":6,"target":"single_enemy","debuff":{"accuracy":-0.2,"turns":2}}
+		{
+		  "name": "Боевой клич",
+		  "type": "magic",
+		  "target": "all_allies",
+		  "effects_to_targets": [
+			{ "id": "atk_up", "name": "Сила +", "is_buff": true, "attack": 5, "duration": 3 }
+		  ],
+		  "costs": { "mana": 10 }
+		},
+		{
+		  "name": "Барьер",
+		  "type": "magic",
+		  "target": "single_ally",
+		  "effects_to_targets": [
+			{ "id": "def_up", "name": "Барьер", "is_buff": true, "defense": 8, "duration": 3 }
+		  ],
+		  "costs": { "mana": 8 }
+		},
+		{
+		  "name": "Дезориентация",
+		  "type": "magic",
+		  "target": "single_enemy",
+		  "effects_to_targets": [
+			{ "id": "disorient", "name": "Дезориентация", "is_buff": false, "speed": -2, "duration": 2 }
+		  ],
+		  "costs": { "mana": 6 }
+		}
 	  ]
 	}
   }

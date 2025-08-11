@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://com70cxemsfjs"]
 
-[ext_resource type="Script" uid="uid://ds11e8upg6alj" path="res://Scenes/taskcard.gd" id="1_5u55e"]
+[ext_resource type="Script" uid="uid://ds11e8upg6alj" path="res://Scripts/taskcard.gd" id="1_5u55e"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_711gs"]
 font_color = Color(0, 0, 0, 1)

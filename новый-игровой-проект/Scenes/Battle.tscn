@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3 uid="uid://dmmdoix2044ef"]
 
-[ext_resource type="Script" uid="uid://cygojaswliwkw" path="res://Scenes/battle.gd" id="1_vr6xi"]
-[ext_resource type="Script" uid="uid://dn06jxngyerns" path="res://Scenes/action_panel.gd" id="2_vr6xi"]
+[ext_resource type="Script" uid="uid://cygojaswliwkw" path="res://Scripts/battle.gd" id="1_vr6xi"]
+[ext_resource type="Script" uid="uid://dn06jxngyerns" path="res://Scripts/action_panel.gd" id="2_vr6xi"]
 [ext_resource type="PackedScene" uid="uid://fkg7ej6bbeno" path="res://Scenes/PartyHUD.tscn" id="3_2h7oj"]
 
 [node name="Battle" type="Node2D"]

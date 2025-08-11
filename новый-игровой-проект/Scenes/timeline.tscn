@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://bxjcp3ngow3ap" path="res://Scenes/timelinerow.tscn" id="1_5kc13"]
 [ext_resource type="PackedScene" uid="uid://com70cxemsfjs" path="res://Scenes/taskcard.tscn" id="1_65cdy"]
-[ext_resource type="Script" uid="uid://ci1u7flpgb18u" path="res://Scenes/task_list.gd" id="1_lkmkd"]
+[ext_resource type="Script" uid="uid://ci1u7flpgb18u" path="res://Scripts/task_list.gd" id="1_lkmkd"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_5kc13"]
 

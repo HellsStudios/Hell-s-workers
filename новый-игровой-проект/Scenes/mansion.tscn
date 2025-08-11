@@ -1,7 +1,7 @@
 [gd_scene load_steps=9 format=3 uid="uid://cdw4xi8jdmhhr"]
 
-[ext_resource type="Script" uid="uid://2v4dau4mmixv" path="res://Scenes/mansion.gd" id="1_5jwi0"]
-[ext_resource type="Script" uid="uid://brs16ogkadj40" path="res://Scenes/camera_2d.gd" id="2_exq5i"]
+[ext_resource type="Script" uid="uid://2v4dau4mmixv" path="res://Scripts/mansion.gd" id="1_5jwi0"]
+[ext_resource type="Script" uid="uid://brs16ogkadj40" path="res://Scripts/camera_2d.gd" id="2_exq5i"]
 
 [sub_resource type="Gradient" id="Gradient_exq5i"]
 colors = PackedColorArray(0.984314, 0, 0, 1, 1, 1, 1, 1)

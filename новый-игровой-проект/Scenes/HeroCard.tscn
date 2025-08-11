@@ -1,6 +1,6 @@
 [gd_scene load_steps=13 format=3 uid="uid://coar1rcig6gk7"]
 
-[ext_resource type="Script" uid="uid://crl0hiq5fwq5l" path="res://HeroCard.gd" id="1_bf0al"]
+[ext_resource type="Script" uid="uid://crl0hiq5fwq5l" path="res://Scripts/HeroCard.gd" id="1_bf0al"]
 
 [sub_resource type="Gradient" id="Gradient_onh44"]
 colors = PackedColorArray(0, 0, 0, 1, 0, 0, 0, 1)
@@ -114,6 +114,7 @@ horizontal_alignment = 2
 vertical_alignment = 1
 
 [node name="TMrow" type="HBoxContainer" parent="HBoxContainer/VBoxContainer"]
+visible = false
 layout_mode = 2
 
 [node name="TM" type="TextureProgressBar" parent="HBoxContainer/VBoxContainer/TMrow"]
@@ -128,3 +129,15 @@ layout_mode = 2
 label_settings = SubResource("LabelSettings_bf0al")
 horizontal_alignment = 2
 vertical_alignment = 1
+
+[node name="Mechanic" type="HBoxContainer" parent="HBoxContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Icon" type="TextureRect" parent="HBoxContainer/VBoxContainer/Mechanic"]
+layout_mode = 2
+
+[node name="Value" type="Label" parent="HBoxContainer/VBoxContainer/Mechanic"]
+layout_mode = 2
+
+[node name="Effects" type="HBoxContainer" parent="HBoxContainer/VBoxContainer"]
+layout_mode = 2
