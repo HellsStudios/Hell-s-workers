@@ -3,6 +3,21 @@ var _current_visual_order: Array[Node2D] = []  # как иконки реаль�
 const _SLOT_W := ICON_W + ICON_GAP
 const MAX_TOTAL_ANIM := 0.30
 const MIN_STEP_DUR   := 0.05
+@export var APPROACH_X := 120.0     # насколько ЛЕВЕЕ цели становиться
+@export var APPROACH_Y := 0.0      # вертикальный сдвиг от Y цели (если нужно)
+@export var LOCK_Y_TO_TARGET := true
+@export var AOE_CENTER_X_OFFSET := 600.0   # подстройка точки в центре по X
+@export var AOE_CENTER_Y_OFFSET := -40.0   # подстройка точки в центре по Y
+var _target_overlay: Control = null
+var _is_acting := false
+# Таргет-пикер
+var _pick_mode := false
+var _pick_btns: Array[Button] = []
+var _pick_map : Dictionary = {}   # Button -> Node2D (цель)
+var _pending  : Dictionary = {}   # {type:"attack"/"skill_single", actor:Node2D, data:Dictionary}
+
+@export var PICK_BTN_SIZE   := Vector2(96, 96)
+@export var PICK_BTN_OFFSET := Vector2(0, -36)   # смещение кнопки над врагом
 # ────────── ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ СЦЕНЫ БОЯ ──────────
 @onready var world_ui  := $UI/WorldUI
 @onready var party_hud := $UI/PartyHUD
@@ -59,9 +74,14 @@ func _layout_from_order(order: Array[Node2D]) -> void:
 	var n := order.size()
 	if n == 0: return
 	_center_turn_panel(_panel_total_w(n))
+	var x := 0
 	for i in range(n):
-		var icon: TextureRect = char_to_icon[order[i]]
-		icon.position = Vector2(i * _SLOT_W, 0)
+		var ch := order[i]
+		if not char_to_icon.has(ch):   # умер/иконка снята
+			continue
+		var icon: TextureRect = char_to_icon[ch]
+		icon.position = Vector2(x * _SLOT_W, 0)
+		x += 1
 
 func _animate_to_order(order: Array[Node2D], dur := 0.15) -> void:
 	var n := order.size()
@@ -121,18 +141,21 @@ func _estimate_swaps(target: Array[Node2D]) -> int:
 	return inv
 # полностью доводим визуальный порядок до target — по одному соседнему шагу за анимацию
 func _normalize_target(target: Array[Node2D]) -> Array[Node2D]:
-	# 1) убираем дубликаты, сохраняя порядок
 	var seen := {}
 	var out: Array[Node2D] = []
+
+	# берём только валидных, у кого ЕСТЬ иконка
 	for ch in target:
-		if not seen.has(ch):
+		if ch != null and is_instance_valid(ch) and char_to_icon.has(ch) and not seen.has(ch):
 			seen[ch] = true
 			out.append(ch)
-	# 2) добавляем недостающих из текущего визуального порядка (в конец)
+
+	# добавляем недостающих из текущего визуального (тоже только валидных)
 	for ch in _current_visual_order:
-		if not seen.has(ch):
+		if ch != null and is_instance_valid(ch) and char_to_icon.has(ch) and not seen.has(ch):
 			seen[ch] = true
 			out.append(ch)
+
 	return out
 
 func _animate_stepwise_to(target_in: Array[Node2D]) -> void:
@@ -182,6 +205,56 @@ func _animate_stepwise_to(target_in: Array[Node2D]) -> void:
 
 func _name_of(ch: Node2D) -> String:
 	return "%s(%s spd=%d m=%.1f)" % [ch.nick, ch.team, int(ch.speed), ch.turn_meter]
+
+func _enter_pick_target(actor: Node2D, typ: String, data: Dictionary) -> void:
+	_pending = {"type": typ, "actor": actor, "data": data}
+	_pick_mode = true
+	action_panel.hide()
+	_build_pick_buttons()
+
+func _leave_pick_mode(show_panel := true) -> void:
+	_clear_pick_buttons()
+	_pick_mode = false
+	var a: Node2D = _pending.get("actor")
+	_pending.clear()
+	if show_panel and a != null and is_instance_valid(a):
+		show_player_options(a)
+
+func _build_pick_buttons() -> void:
+	_clear_pick_buttons()
+	for e in enemies:
+		if is_instance_valid(e) and e.health > 0:
+			var b := Button.new()
+			b.text = "🎯"
+			b.size = PICK_BTN_SIZE
+			b.focus_mode = Control.FOCUS_NONE
+			world_ui.add_child(b)
+			_pick_btns.append(b)
+			_pick_map[b] = e
+			b.pressed.connect(Callable(self, "_on_pick_pressed").bind(b))
+	_update_pick_buttons()
+
+func _update_pick_buttons() -> void:
+	var cam := get_viewport().get_camera_2d()
+	if cam == null: return
+	for b in _pick_btns:
+		var t: Node2D = _pick_map.get(b)
+		if t == null or not is_instance_valid(t):
+			b.queue_free()
+			continue
+		var screen = cam.unproject_position(t.global_position)
+		b.position = screen + PICK_BTN_OFFSET - b.size * 0.5
+
+func _clear_pick_buttons() -> void:
+	for b in _pick_btns:
+		if is_instance_valid(b): b.queue_free()
+	_pick_btns.clear()
+	_pick_map.clear()
+
+func _process(_dt: float) -> void:
+	if _pick_mode:
+		_update_pick_buttons()
+
 
 func _print_order(tag: String, steps := 6) -> void:
 	var order := _predict_order(min(steps, actors.size()))
@@ -272,31 +345,61 @@ func rebuild_turn_queue() -> void:
 		names.append("%s(%s spd=%d)" % [c.nick, c.team, int(c.speed)])
 	print("Очередь старт:", names)
 	
+	
 func _on_action_selected(action_type: String, actor: Node2D, data):
-	# скрываем панель, чтобы не кликали второе действие
+	if _is_acting: return
 	action_panel.hide()
 
 	match action_type:
 		"attack":
-			# базовая атака по одному врагу
-			var tgt := _first_alive(enemies)
-			if tgt:
-				await _do_melee_single(actor, tgt, max(1, int(actor.attack)))
-			end_turn()
+			# выбираем цель среди живых врагов
+			var list: Array[Node2D] = []
+			for e in enemies:
+				if is_instance_valid(e) and e.health > 0:
+					list.append(e)
+			if list.is_empty():
+				end_turn(); return
+
+			_build_target_overlay(actor, list, func(target: Node2D) -> void:
+				_is_acting = true
+				await _do_melee_single(actor, target, max(1, actor.attack))
+				_is_acting = false
+				end_turn()
+			)
 
 		"skill":
-			if typeof(data) == TYPE_DICTIONARY:
-				await _player_use_skill(actor, data)
+			var skill: Dictionary = data if typeof(data) == TYPE_DICTIONARY else {}
+			var s_target := String(skill.get("target",""))
+
+			if s_target == "single_enemy":
+				var list: Array[Node2D] = []
+				for e in enemies:
+					if is_instance_valid(e) and e.health > 0:
+						list.append(e)
+				if list.is_empty():
+					end_turn(); return
+
+				_build_target_overlay(actor, list, func(target: Node2D) -> void:
+					_is_acting = true
+					var dmg := int(skill.get("damage", actor.attack))
+					await _do_melee_single(actor, target, max(1, dmg))
+					_is_acting = false
+					end_turn()
+				)
+
+			elif s_target == "all_enemies":
+				_is_acting = true
+				var dmg_all := int(skill.get("damage", actor.attack))
+				await _do_melee_aoe(actor, max(1, dmg_all))
+				_is_acting = false
+				end_turn()
+
 			else:
+				# другие типы пока по-старому
 				end_turn()
 
 		"item":
-			# для примера — самопохил, если предмет лечащий
-			if typeof(data) == TYPE_STRING:
-				# можно подсунуть цель и здесь
-				use_item(data, actor, actor)
-			else:
-				end_turn()
+			end_turn()
 
 		"skip":
 			end_turn()
@@ -454,16 +557,15 @@ func start_battle() -> void:
 	process_turn()
 
 func _apply_melee_hit(target: Node2D, damage: int, gate: Dictionary) -> void:
-	if gate.get("done", false):
-		return
+	# защита от двойного хита (сигнал + таймаут)
+	if gate.get("done", false): return
 	gate["done"] = true
 
-	if not is_instance_valid(target):
-		return
+	if not is_instance_valid(target): return
 
 	target.health = max(0, target.health - damage)
 
-	# маленькая тряска цели
+	# простая тряска
 	var base := target.position
 	var tw := create_tween().set_trans(Tween.TRANS_SINE)
 	tw.tween_property(target, "position", base + Vector2(4, 0), 0.05)
@@ -473,43 +575,101 @@ func _apply_melee_hit(target: Node2D, damage: int, gate: Dictionary) -> void:
 	if target.health <= 0:
 		_on_enemy_died(target)
 
+func _do_melee_aoe(user: Node2D, damage: int) -> void:
+	if user == null or not is_instance_valid(user):
+		return
+	var mover := user.get_node_or_null("MotionRoot") as Node2D
+	if mover == null:
+		mover = user
+	var start_pos := mover.global_position
+
+	# точка в центре экрана + поправки, Y усредняем по врагам
+	var dst := _screen_center_world() + Vector2(AOE_CENTER_X_OFFSET, AOE_CENTER_Y_OFFSET)
+	var sumy := 0.0
+	var cnt := 0
+	for e in enemies:
+		if is_instance_valid(e) and e.health > 0:
+			sumy += e.global_position.y
+			cnt += 1
+	if cnt > 0:
+		dst.y = sumy / cnt + APPROACH_Y
+
+	_play_if_has(user.anim, "run")
+	var tw_in := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw_in.tween_property(mover, "global_position", dst, 0.22)
+	await tw_in.finished
+
+	var clip := "idle"
+	if user.anim != null:
+		if user.anim.has_animation("skill"):
+			clip = "skill"
+		elif user.anim.has_animation("attack"):
+			clip = "attack"
+	_play_if_has(user.anim, clip)
+
+	var gated := false
+	if user.has_signal("hit_event"):
+		user.hit_event.connect(func():
+			if gated: return
+			gated = true
+			for e in enemies:
+				if is_instance_valid(e) and e.health > 0:
+					_apply_melee_hit(e, damage, {"done": false})
+		, CONNECT_ONE_SHOT)
+
+	var clip_len := 0.4
+	if user.anim != null and user.anim.has_animation(clip):
+		clip_len = user.anim.get_animation(clip).length
+	var hit_delay := 0.3 * clip_len
+
+	await get_tree().create_timer(clamp(hit_delay, 0.08, 0.45)).timeout
+	if not gated:
+		for e in enemies:
+			if is_instance_valid(e) and e.health > 0:
+				_apply_melee_hit(e, damage, {"done": false})
+
+	await _wait_anim_end(user.anim, clip)
+	var tw_out := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw_out.tween_property(mover, "global_position", start_pos, 0.22)
+	await tw_out.finished
+	_play_if_has(user.anim, "idle")
 
 func _do_melee_single(user: Node2D, target: Node2D, damage: int) -> void:
 	if user == null or target == null or not is_instance_valid(user) or not is_instance_valid(target):
 		return
 
-	var start_pos := user.global_position
-	var hit_pos   := _approach_point(user, target, 56.0)
+	var mover := user.get_node_or_null("MotionRoot") as Node2D  # см. вариант Б ниже
+	if mover == null: mover = user
+
+	var start_pos := mover.global_position
+	var hit_pos   := _approach_point(user, target)  # см. п.2, больше не передаём dist руками
 
 	# Подбег
 	_play_if_has(user.anim, "run")
 	var tw_in := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tw_in.tween_property(user, "global_position", hit_pos, 0.18)
+	tw_in.tween_property(mover, "global_position", hit_pos, 0.18)
 	await tw_in.finished
 
 	# Атака
 	_play_if_has(user.anim, "attack")
 
-	# Ждём момент удара:
-	# 1) если анимация вызовет signal hit_event — применим сразу
-	# 2) если нет — применим через небольшой таймаут (фолбэк)
+	# наносим урон по событию или по таймеру (~30% длины клипа)
 	var gate := {"done": false}
-
 	if user.has_signal("hit_event"):
-		# единоразово, чтобы не словить двойной удар
 		user.hit_event.connect(Callable(self, "_apply_melee_hit").bind(target, damage, gate), CONNECT_ONE_SHOT)
 
-	# фолбэк-таймер (если сигнал не придёт)
-	await get_tree().create_timer(0.15).timeout
+	var hit_delay = 0.3 * (user.anim.get_animation("attack").length if user.anim and user.anim.has_animation("attack") else 0.4)
+	await get_tree().create_timer(clamp(hit_delay, 0.08, 0.45)).timeout
 	_apply_melee_hit(target, damage, gate)
 
-	# подождём ещё чуть-чуть, чтобы анимация завершилась (без риска зависнуть)
-	await get_tree().create_timer(0.10).timeout
+	# дожидаемся конца "attack"
+	await _wait_anim_end(user.anim, "attack")
 
 	# Возврат
 	var tw_out := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tw_out.tween_property(user, "global_position", start_pos, 0.18)
+	tw_out.tween_property(mover, "global_position", start_pos, 0.18)
 	await tw_out.finished
+
 	_play_if_has(user.anim, "idle")
 	
 func _player_use_skill(user: Node2D, skill: Dictionary) -> void:
@@ -541,21 +701,99 @@ func _player_use_skill(user: Node2D, skill: Dictionary) -> void:
 
 	end_turn()
 
+
+func _first_alive_enemy() -> Node2D:
+	for e in enemies:
+		if is_instance_valid(e) and e.health > 0:
+			return e
+	return null
+
 func _first_alive(arr: Array[Node2D]) -> Node2D:
 	for a in arr:
 		if a != null and is_instance_valid(a) and a.health > 0:
 			return a
 	return null
 
-func _approach_point(attacker: Node2D, target: Node2D, dist := 56.0) -> Vector2:
-	var a := attacker.global_position
-	var b := target.global_position
-	var dir := (b - a).normalized()
-	return b - dir * dist
+func _build_target_overlay(user: Node2D, candidates: Array[Node2D], on_pick: Callable) -> void:
+	# прибьём старый
+	if _target_overlay and is_instance_valid(_target_overlay):
+		_target_overlay.queue_free()
 
-func _play_if_has(anim: AnimationPlayer, name: String) -> void:
-	if anim and anim.has_animation(name):
-		anim.play(name)
+	var ov := Control.new()
+	ov.name = "TargetOverlay"
+	ov.mouse_filter = Control.MOUSE_FILTER_STOP
+	ov.focus_mode = Control.FOCUS_ALL
+	ov.z_index = 9999
+	# во весь экран
+	ov.anchor_left = 0; ov.anchor_top = 0; ov.anchor_right = 1; ov.anchor_bottom = 1
+	ov.offset_left = 0; ov.offset_top = 0; ov.offset_right = 0; ov.offset_bottom = 0
+	$UI.add_child(ov)
+	_target_overlay = ov
+
+	# Полупрозрачный фон (чтобы было видно, что режим выбора активен)
+	var bg := ColorRect.new()
+	bg.color = Color(0,0,0,0.25)
+	bg.anchor_left = 0; bg.anchor_top = 0; bg.anchor_right = 1; bg.anchor_bottom = 1
+	ov.add_child(bg)
+
+	# Кнопка "Отмена"
+	var cancel := Button.new()
+	cancel.text = "Отмена"
+	cancel.anchor_right = 0; cancel.anchor_bottom = 0
+	cancel.position = Vector2(12, 12)
+	ov.add_child(cancel)
+	cancel.pressed.connect(func():
+		if is_instance_valid(_target_overlay): _target_overlay.queue_free()
+		_target_overlay = null
+		# вернём панель действий
+		action_panel.show_main_menu(user)
+	)
+
+	# Кнопки над целями
+	var cam := get_viewport().get_camera_2d()
+	for e in candidates:
+		if e == null or not is_instance_valid(e) or e.health <= 0:
+			continue
+		var btn := Button.new()
+		btn.text = e.nick
+		btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		btn.custom_minimum_size = Vector2(90, 32)
+		var sp = cam.unproject_position(e.global_position) if cam else e.global_position
+		btn.position = sp + Vector2(-45, -96)  # чуть выше цели
+		ov.add_child(btn)
+		btn.pressed.connect(Callable(self, "_on_target_button").bind(e, on_pick))
+		
+func _on_target_button(target: Node2D, on_pick: Callable) -> void:
+	if _target_overlay and is_instance_valid(_target_overlay):
+		_target_overlay.queue_free()
+	_target_overlay = null
+	await on_pick.call(target)
+
+func _screen_center_world() -> Vector2:
+	var cam := get_viewport().get_camera_2d()
+	return cam.get_screen_center_position() if cam else Vector2.ZERO
+
+func _approach_point(user: Node2D, target: Node2D) -> Vector2:
+	var p1 := target.global_position
+	var y  := (p1.y if LOCK_Y_TO_TARGET else user.global_position.y) + APPROACH_Y
+	# встаём строго слева от цели (по мировому X)
+	return Vector2(p1.x - APPROACH_X, y)
+
+func _play_if_has(ap: AnimationPlayer, name: String) -> void:
+	if ap and ap.has_animation(name):
+		ap.play(name)
+
+func _wait_anim_end(ap: AnimationPlayer, name: String, fallback := 1.0) -> void:
+	if ap == null or not ap.has_animation(name): return
+	var done := false
+	ap.animation_finished.connect(func(finished): if finished == name: done = true, CONNECT_ONE_SHOT)
+	# ждём не дольше длины клипа + небольшой запас
+	var max_t := (ap.get_animation(name).length if ap.has_animation(name) else fallback) + 0.1
+	var t0 := Time.get_ticks_msec()
+	while not done and Time.get_ticks_msec() - t0 < int(max_t * 1000):
+		await get_tree().process_frame
+
+
 
 func _build_turn_icons_fresh() -> void:
 	for ic in char_to_icon.values(): ic.queue_free()
@@ -700,29 +938,40 @@ func perform_action(user: Node2D, action: Dictionary) -> void:
 			target.health = min(target.max_health, target.health + heal_amount)
 			
 func _on_enemy_died(enemy: Node2D):
+	if not is_instance_valid(enemy):
+		return
+
+	# 1) анимация смерти, если есть
+	if enemy.anim and enemy.anim.has_animation("die"):
+		enemy.anim.play("die")
+		await _wait_anim_end(enemy.anim, "die", 0.6)
+
+	# 2) мягко угасим спрайт (опционально)
+	var tw := create_tween().set_trans(Tween.TRANS_SINE)
+	tw.tween_property(enemy, "modulate:a", 0.0, 0.18)
+	await tw.finished
+
+	# 3) убираем HB/массивы/иконку
 	if enemy_bars.has(enemy):
 		enemy_bars[enemy].queue_free()
 		enemy_bars.erase(enemy)
 
-	if enemies.has(enemy):
-		enemies.erase(enemy)
-	if actors.has(enemy):
-		actors.erase(enemy)
+	enemies.erase(enemy)
+	actors.erase(enemy)
 
-	# Иконку в очереди тоже уберём
 	if char_to_icon.has(enemy):
 		var ic: TextureRect = char_to_icon[enemy]
 		if ic: ic.queue_free()
 		char_to_icon.erase(enemy)
 
-	# Обновим визуальный порядок очереди (без умершего)
+	# 4) перестраиваем очередь уже БЕЗ умершего
 	turn_queue = _panel_order_next()
 	_current_visual_order = _normalize_target(turn_queue)
 	_layout_from_order(_current_visual_order)
 
-	# Спрячем сам узел врага (или queue_free, если готово)
+	# 5) скрываем/удаляем сам узел
 	if is_instance_valid(enemy):
-		enemy.hide()  # или enemy.queue_free()
+		enemy.queue_free()
 				
 			
 func _icons_base_x() -> float:

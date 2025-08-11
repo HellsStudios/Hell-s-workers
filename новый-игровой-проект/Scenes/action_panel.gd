@@ -47,27 +47,24 @@ func _on_BackButton2_pressed():
 
 # ——————— УМЕНИЯ ———————
 func update_skill_buttons_for(hero: Node2D):
-	var skills: Array = hero.abilities
+	var skills = hero.abilities
 	for i in range(6):
-		var path := "SkillMenuContainer/SkillButton%d" % (i + 1)
-		if not has_node(path):
-			continue
+		var path = "SkillMenuContainer/SkillButton%d" % (i+1)
+		if not has_node(path): continue
 		var btn: Button = get_node(path)
+
+		# очистим старые коннекты
+		for c in btn.get_signal_connection_list("pressed"):
+			btn.disconnect("pressed", c.callable)
 
 		if i < skills.size():
 			var skill: Dictionary = skills[i]
-			btn.text    = str(skill.get("name", "Skill"))
+			btn.text = str(skill.get("name","Skill"))
 			btn.visible = true
 			btn.disabled = false
-
-			# Снимаем прежнее подключение (если было) и подключаем ровно один раз
-			var call := Callable(self, "_on_skill_index").bind(i)
-			if btn.pressed.is_connected(call):
-				btn.pressed.disconnect(call)
-			btn.pressed.connect(call)
+			btn.connect("pressed", Callable(self, "_on_skill_pressed").bind(skill))
 		else:
 			btn.visible = false
-			btn.disabled = true
 
 func _on_skill_index(i: int) -> void:
 	if current_hero == null:
