@@ -140,6 +140,7 @@ offset_bottom = 40.0
 [node name="PartyHUD" parent="UI" instance=ExtResource("3_2h7oj")]
 
 [node name="QTEBar" parent="UI" instance=ExtResource("4_1samx")]
+anchors_preset = 15
 
 [connection signal="button_down" from="UI/ActionPanel/MainMenuContainer/AttackButton" to="UI/ActionPanel" method="_on_AttackButton_pressed"]
 [connection signal="button_down" from="UI/ActionPanel/MainMenuContainer/SkillButton" to="UI/ActionPanel" method="_on_SkillButton_pressed"]

@@ -49,9 +49,20 @@ var turn_icons: Array[TextureRect] = []
 var enemy_bars: Dictionary = {}  # enemy -> bar
 @export var world_camera_path: NodePath   # можно оставить пустым
 @export var auto_create_camera := false   # если true, создадим Camera2D при отсутствии
+@export var HB_OFFSET_Y := 88.0          # насколько выше головы ставить бар (в пикселях)
+@export var HB_SCALE_WITH_ZOOM := true   # масштабировать ли бар при зуме
+@export var HB_MIN_SCALE := 0.8
+@export var HB_MAX_SCALE := 1.8
 
 var _cam_saved := { "pos": Vector2.ZERO, "zoom": Vector2.ONE, "proc": Node.PROCESS_MODE_INHERIT, "smooth": false }
 var _vp_saved_xform: Transform2D = Transform2D.IDENTITY
+
+func _get_view_zoom() -> float:
+	var cam := get_viewport().get_camera_2d()
+	if cam:
+		return cam.zoom.x              # Godot 4: >1 — крупнее
+	# фолбэк: зум из canvas_transform (если камеры нет)
+	return get_viewport().canvas_transform.get_scale().x
 
 func _get_cam() -> Camera2D:
 	# 1) явный путь
@@ -145,10 +156,27 @@ func _cam_pop() -> void:
 func _world_to_screen(p: Vector2) -> Vector2:
 	var cam := get_viewport().get_camera_2d()
 	if cam:
-		# у камеры есть unproject_position, им и пользуемся
 		return cam.unproject_position(p)
-	# без камеры используем canvas_transform
 	return get_viewport().canvas_transform * p
+	
+func _update_enemy_bars_positions() -> void:
+	if enemy_bars.is_empty(): return
+	var zoom := _get_view_zoom()
+	var s := 1.0
+	if HB_SCALE_WITH_ZOOM:
+		s = clamp(zoom, HB_MIN_SCALE, HB_MAX_SCALE)
+
+	for e in enemy_bars.keys():
+		var bar: Control = enemy_bars[e]
+		if not is_instance_valid(e) or not is_instance_valid(bar):
+			if is_instance_valid(bar): bar.queue_free()
+			enemy_bars.erase(e)
+			continue
+
+		var screen := _world_to_screen(e.global_position)
+		# позиция — над целью; бар в UI, поэтому задаём глобальные экранные пиксели
+		bar.scale = Vector2(s, s)
+		bar.global_position = screen + Vector2(0, -HB_OFFSET_Y * s)
 	
 func _cine_self_test() -> void:
 	var cam := _get_cam()
@@ -219,6 +247,7 @@ func _perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dictionary
 	if targets.size() == 0: return
 	var main_tgt: Node2D = targets[0]
 	_enter_cinematic(targets)
+	_update_enemy_bars_positions()
 	await _cam_push_focus(main_tgt.global_position)
 
 	# если физическая и одиночная — подбежали один раз вначале
@@ -322,6 +351,7 @@ func _perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dictionary
 		await create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)\
 			.tween_property(mover, "global_position", start_pos, 0.18).finished
 	_play_if_has(user.anim, "idle")
+	_update_enemy_bars_positions()
 	await _cam_pop()
 	_exit_cinematic()
 
@@ -330,6 +360,7 @@ func _spawn_enemy_bars():
 		if is_instance_valid(bar):
 			bar.queue_free()
 	enemy_bars.clear()
+	_update_enemy_bars_positions()
 
 	if world_ui and world_ui is Control:
 		world_ui.visible = true
@@ -550,6 +581,7 @@ func _clear_pick_buttons() -> void:
 func _process(_dt: float) -> void:
 	if _pick_mode:
 		_update_pick_buttons()
+	_update_enemy_bars_positions()
 
 
 func _print_order(tag: String, steps := 6) -> void:
@@ -618,6 +650,7 @@ func _ready() -> void:
 func _on_viewport_resized() -> void:
 	if _current_visual_order.size() > 0:
 		_layout_from_order(_current_visual_order)
+	_update_enemy_bars_positions()
 
 func _center_turn_panel(total_w: float) -> void:
 	# центр по X через anchors + offsets
@@ -734,6 +767,48 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 						_is_acting = false
 					end_turn()
 				, "all")
+			elif s_target == "self":
+				var can := _can_pay_cost(actor, skill)
+				if not can:
+					show_player_options(actor)
+					return
+				_pay_cost(actor, skill)
+
+				_is_acting = true
+				await _do_support(actor, actor, skill)
+				_is_acting = false
+				end_turn()
+
+			elif s_target == "single_ally":
+				var allies: Array[Node2D] = []
+				var pool: Array[Node2D] = []
+
+				if actor.team == "hero":
+					pool = heroes
+				else:
+					pool = enemies
+
+				for a in pool:
+					if is_instance_valid(a) and a.health > 0:
+						allies.append(a)
+
+				if allies.is_empty():
+					end_turn()
+					return
+
+				_build_target_overlay(actor, allies, func(targets: Array) -> void:
+					if not _can_pay_cost(actor, skill):
+						show_player_options(actor)
+						return
+					_pay_cost(actor, skill)
+
+					var tgt_local: Node2D = targets[0]
+
+					_is_acting = true
+					await _do_support(actor, tgt_local, skill)  # ← передаём весь словарь умения
+					_is_acting = false
+					end_turn()
+				, "single")
 
 		"item":
 			end_turn()
@@ -910,10 +985,11 @@ func start_battle() -> void:
 	process_turn()
 
 func _do_magic_single(user: Node2D, target: Node2D, damage: int, effects_to_targets: Array = []) -> void:
-	if user == null or target == null: return
-	if not is_instance_valid(user) or not is_instance_valid(target): return
+	if user == null or target == null:
+		return
+	if not is_instance_valid(user) or not is_instance_valid(target):
+		return
 
-	# выбираем клип: cast > skill > attack > idle
 	var clip := "idle"
 	if user.anim != null:
 		if user.anim.has_animation("cast"):
@@ -922,31 +998,25 @@ func _do_magic_single(user: Node2D, target: Node2D, damage: int, effects_to_targ
 			clip = "skill"
 		elif user.anim.has_animation("attack"):
 			clip = "attack"
-
 	_play_if_has(user.anim, clip)
 
-	# один раз обработать хит по сигналу, иначе — фолбэк-таймер
 	var gate := {"done": false}
 	var cb := Callable(self, "_apply_melee_hit").bind(target, damage, gate, effects_to_targets, user)
 	_connect_hit_once(user, cb)
 
 	var clip_len := 0.6
-	if user.anim != null and user.anim.has_animation(clip):
-		clip_len = user.anim.get_animation(clip).length
-
-	# небольшой «безопасный» таймаут на ~30% длины клипа
+	if user.anim != null:
+		if user.anim.has_animation(clip):
+			clip_len = user.anim.get_animation(clip).length
 	var timeout = clamp(0.30 * clip_len, 0.08, 0.60)
 	await get_tree().create_timer(timeout).timeout
 
-	# если сигнал не пришёл — применяем сами (ровно один раз)
 	_apply_melee_hit(target, damage, gate, effects_to_targets, user)
-
-	# перестраховка: снять оставшуюся подписку
 	_disconnect_hit_if_any(user, cb)
 
-	# обязательно дожидаемся завершения клипа, чтобы не ломать позу/бленды
 	await _wait_anim_end(user.anim, clip, 1.2)
 	_play_if_has(user.anim, "idle")
+
 
 
 func _do_magic_aoe(user: Node2D, damage: int, effects_to_targets: Array = []) -> void:
@@ -961,22 +1031,19 @@ func _do_magic_aoe(user: Node2D, damage: int, effects_to_targets: Array = []) ->
 			clip = "skill"
 		elif user.anim.has_animation("attack"):
 			clip = "attack"
-
 	_play_if_has(user.anim, clip)
 
-	# обработчик «одним махом» по всем целям
 	var gated := {"done": false}
 	var cb := Callable(self, "_on_magic_aoe_hit").bind(user, damage, effects_to_targets, gated)
 	_connect_hit_once(user, cb)
 
 	var clip_len := 0.6
-	if user.anim != null and user.anim.has_animation(clip):
-		clip_len = user.anim.get_animation(clip).length
-
+	if user.anim != null:
+		if user.anim.has_animation(clip):
+			clip_len = user.anim.get_animation(clip).length
 	var timeout = clamp(0.30 * clip_len, 0.08, 0.60)
 	await get_tree().create_timer(timeout).timeout
 
-	# фолбэк: если сигнал не пришёл — наносим сами
 	if not gated.get("done", false):
 		_apply_aoe_once(user, damage, effects_to_targets)
 		gated["done"] = true
@@ -984,12 +1051,63 @@ func _do_magic_aoe(user: Node2D, damage: int, effects_to_targets: Array = []) ->
 	_disconnect_hit_if_any(user, cb)
 	await _wait_anim_end(user.anim, clip, 1.2)
 	_play_if_has(user.anim, "idle")
+
 	
 func _on_magic_aoe_hit(user: Node2D, damage: int, effects_to_targets: Array, gated: Dictionary) -> void:
 	if gated.get("done", false):
 		return
 	gated["done"] = true
 	_apply_aoe_once(user, damage, effects_to_targets)
+
+func _do_support(user: Node2D, target: Node2D, ability: Dictionary) -> void:
+	if user == null:
+		return
+	if target == null or not is_instance_valid(target):
+		target = user
+
+	# ── Защита от неправильного типа ──
+	if typeof(ability) == TYPE_ARRAY:
+		ability = {"effects_to_targets": ability}
+	elif typeof(ability) != TYPE_DICTIONARY:
+		return
+
+	# Выбор клипа
+	var clip := "idle"
+	if user.anim != null:
+		if user.anim.has_animation("cast"):
+			clip = "cast"
+		elif user.anim.has_animation("skill"):
+			clip = "skill"
+	_play_if_has(user.anim, clip)
+
+	# Момент применения ~30% длины клипа
+	var clip_len := 0.5
+	if user.anim != null and user.anim.has_animation(clip):
+		clip_len = user.anim.get_animation(clip).length
+	var apply_delay := 0.30 * clip_len
+	if apply_delay < 0.06: apply_delay = 0.06
+	if apply_delay > 0.60: apply_delay = 0.60
+	await get_tree().create_timer(apply_delay).timeout
+
+	# Лечение
+	if ability.has("heal"):
+		var heal := int(ability.get("heal", 0))
+		var new_hp = target.health + heal
+		if new_hp > target.max_health: new_hp = target.max_health
+		if new_hp < 0: new_hp = 0
+		target.health = new_hp
+
+	# Эффекты
+	var effs_to_target: Array = ability.get("effects_to_targets", [])
+	if effs_to_target.size() > 0:
+		_apply_effects(effs_to_target, target)
+
+	var effs_to_self: Array = ability.get("effects_to_self", [])
+	if effs_to_self.size() > 0:
+		_apply_effects(effs_to_self, user)
+
+	await _wait_anim_end(user.anim, clip, 1.2)
+	_play_if_has(user.anim, "idle")
 
 func _apply_melee_hit(target: Node2D, damage: int, gate: Dictionary, effects_to_targets: Array = [], source: Node2D = null) -> void:
 	if gate.get("done", false): return
@@ -1233,13 +1351,13 @@ func _on_target_button(target: Node2D, on_pick: Callable, mode: String = "single
 	_target_overlay = null
 
 	if mode == "all":
-		var picked: Array = []
+		var picked: Array[Node2D] = []   # ← типизированный
 		for e in enemies:
 			if is_instance_valid(e) and e.health > 0:
 				picked.append(e)
-		await on_pick.call(picked)       # ← массив всех живых врагов
+		await on_pick.call(picked)
 	else:
-		await on_pick.call([target])     # ← массив из одного
+		await on_pick.call([target])
 
 func _screen_center_world() -> Vector2:
 	var cam := get_viewport().get_camera_2d()
@@ -1255,16 +1373,33 @@ func _play_if_has(ap: AnimationPlayer, name: String) -> void:
 	if ap and ap.has_animation(name):
 		ap.play(name)
 
-func _wait_anim_end(ap: AnimationPlayer, name: String, fallback := 1.0) -> void:
-	if ap == null or not ap.has_animation(name): return
-	var done := false
-	ap.animation_finished.connect(func(finished): if finished == name: done = true, CONNECT_ONE_SHOT)
-	# ждём не дольше длины клипа + небольшой запас
-	var max_t := (ap.get_animation(name).length if ap.has_animation(name) else fallback) + 0.1
+func _wait_anim_end(ap: AnimationPlayer, name: String, fallback := 0.0) -> void:
+	# Надёжная версия: без лямбд/сигналов, только опрос состояния.
+	var limit := fallback
+	if ap != null:
+		if ap.has_animation(name):
+			var L := ap.get_animation(name).length
+			if L > 0.0:
+				if L > limit:
+					limit = L
+
 	var t0 := Time.get_ticks_msec()
-	while not done and Time.get_ticks_msec() - t0 < int(max_t * 1000):
+	var deadline_ms := int((limit + 0.10) * 1000.0)  # маленький запас
+
+	while Time.get_ticks_msec() - t0 < deadline_ms:
+		if ap == null:
+			break
+		# вышли, если клип уже не играет / сменился
+		if not ap.is_playing():
+			break
+		if String(ap.current_animation) != name:
+			break
 		await get_tree().process_frame
 
+	# На всякий: если всё ещё тот же клип и он «висит» — стопнем
+	if ap != null:
+		if ap.is_playing() and String(ap.current_animation) == name:
+			ap.stop()
 
 
 func _build_turn_icons_fresh() -> void:
