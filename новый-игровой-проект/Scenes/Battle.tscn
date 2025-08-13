@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3 uid="uid://dmmdoix2044ef"]
+[gd_scene load_steps=5 format=3 uid="uid://dmmdoix2044ef"]
 
 [ext_resource type="Script" uid="uid://cygojaswliwkw" path="res://Scripts/battle.gd" id="1_vr6xi"]
 [ext_resource type="Script" uid="uid://dn06jxngyerns" path="res://Scripts/action_panel.gd" id="2_vr6xi"]
 [ext_resource type="PackedScene" uid="uid://fkg7ej6bbeno" path="res://Scenes/PartyHUD.tscn" id="3_2h7oj"]
+[ext_resource type="PackedScene" uid="uid://ckjklqlt5u6is" path="res://Scenes/qte_bar.tscn" id="4_1samx"]
 
 [node name="Battle" type="Node2D"]
 script = ExtResource("1_vr6xi")
@@ -137,6 +138,8 @@ offset_right = 40.0
 offset_bottom = 40.0
 
 [node name="PartyHUD" parent="UI" instance=ExtResource("3_2h7oj")]
+
+[node name="QTEBar" parent="UI" instance=ExtResource("4_1samx")]
 
 [connection signal="button_down" from="UI/ActionPanel/MainMenuContainer/AttackButton" to="UI/ActionPanel" method="_on_AttackButton_pressed"]
 [connection signal="button_down" from="UI/ActionPanel/MainMenuContainer/SkillButton" to="UI/ActionPanel" method="_on_SkillButton_pressed"]

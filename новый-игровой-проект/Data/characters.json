@@ -7,14 +7,23 @@
 	  "max_health": 110, "health": 110,
 	  "max_stamina": 60, "stamina": 60,
 	  "max_mana": 60, "mana": 60,
-	  "attack": 15, "defense": 10, "speed": 9,
+	  "attack": 15, "defense": 10, "speed": 20,
 	  "skills": [
 		{
 		  "name": "Мощный удар",
 		  "type": "physical",
 		  "target": "single_enemy",
 		  "damage": 18, "accuracy": 0.9, "crit": 0.1,
-		  "costs": { "stamina": 10 }
+		  "costs": { "stamina": 10 },
+		  "qte": {
+		  "steps": [
+			{ "anim":"attack",  "duration": 1.10, "segments": [[0.35,0.45]],            "slowmo": 0.25 },
+			{ "anim":"attack", "duration": 1.00, "segments": [[0.25,0.33],[0.62,0.68]], "slowmo": 0.25 }
+		  ],
+		  "on_success": { "damage_mult": 1.25, "duration_bonus": 1, "spread": "none" },
+		  "on_perfect": { "damage_mult": 1.50, "duration_bonus": 2, "spread": "all_enemies" },
+		  "on_fail":    { "damage_mult": 0.75 }
+		}
 		},
 		{
 		  "name": "Размах клинком",
