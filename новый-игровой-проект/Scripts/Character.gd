@@ -32,6 +32,10 @@ var effects: Array = []
 @export var sin_wrath: int = 0
 @export var sin_sloth: int = 0
 
+var dodge_window: float = 0.12
+var block_window: float = 0.18
+var block_reduce: float = 0.5  # 0.5 = блок режет урон наполовину при «успехе»
+
 # Список способностей (будет заполнен позже)
 var abilities: Array = []
 
@@ -105,6 +109,20 @@ func init_from_dict(d: Dictionary) -> void:
 	attack = d.get("attack", 10)
 	defense = d.get("defense", 5)
 	speed = d.get("speed", 10)
+	if d.has("dodge_window"):
+		dodge_window = float(d.get("dodge_window", 0.12))
+	else:
+		dodge_window = 0.12
+
+	if d.has("block_window"):
+		block_window = float(d.get("block_window", 0.18))
+	else:
+		block_window = 0.18
+
+	if d.has("block_reduce"):
+		block_reduce = float(d.get("block_reduce", 0.5))
+	else:
+		block_reduce = 0.5
 
 	health = d.get("hp", max_health)
 	mana = d.get("mana", max_mana)

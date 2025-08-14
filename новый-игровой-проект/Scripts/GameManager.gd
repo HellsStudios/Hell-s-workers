@@ -11,9 +11,27 @@ var phase_names = ["Утро", "День", "Вечер", "Ночь"]
 var items_db: Dictionary = {}        # id -> def (из items.json)
 var base_inventory: Dictionary = {}  # id -> количество (на базе)
 
+var enemies_db: Dictionary = {}  # id -> деф
+
+func load_enemies_db(path: String = "res://Data/enemies.json") -> void:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		push_error("[Enemies] DB not found: " + path)
+		return
+	var txt := f.get_as_text()
+	var parsed = JSON.parse_string(txt)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		push_error("[Enemies] JSON parse error")
+		return
+	enemies_db = parsed.get("enemies", {})
+
+func get_enemy_def(id: String) -> Dictionary:
+	return enemies_db.get(id, {})
+
 func _ready() -> void:
 	load_heroes("res://Data/characters.json")
 	load_items_db("res://Data/items.json") 
+	load_enemies_db("res://Data/enemies.json")
 	
 func load_items_db(path: String = "res://Data/items.json") -> void:
 	var f := FileAccess.open(path, FileAccess.READ)

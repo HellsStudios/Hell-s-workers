@@ -7,7 +7,7 @@
 	  "max_health": 110, "health": 110,
 	  "max_stamina": 60, "stamina": 60,
 	  "max_mana": 60, "mana": 60,
-	  "attack": 15, "defense": 10, "speed": 9,
+	  "attack": 15, "defense": 10, "speed": 20,
 	  "carry_slots_max": 5,
 	  "forbidden_categories": [],
 	  "pack": [],
@@ -32,8 +32,25 @@
 		  "name": "Размах клинком",
 		  "type": "physical",
 		  "target": "all_enemies",
-		  "damage": 10, "accuracy": 0.85, "crit": 0.05,
-		  "costs": { "stamina": 15 }
+		  "damage": 10,
+		  "accuracy": 0.85,
+		  "crit": 0.05,
+		  "costs": { "stamina": 15 },
+		  "qte": {
+			"steps": [
+			  { "anim": "attack", "duration": 0.60, "segments": [[0.40, 0.55]],
+				"select": { "mode": "random_enemies", "count": 1 } },
+
+			  { "anim": "attack", "duration": 0.60, "segments": [[0.35, 0.50]],
+				"select": { "mode": "random_enemies", "count": 2 } },
+
+			  { "anim": "attack", "duration": 0.70, "segments": [[0.45, 0.55]],
+				"select": { "mode": "all_enemies" } }
+			],
+			"on_success": { "damage_mult": 1.0 },
+			"on_perfect": { "damage_mult": 1.25 },
+			"on_fail":    { "damage_mult": 0.8 }
+		  }
 		},
 		{
 		  "name": "Защитная стойка",

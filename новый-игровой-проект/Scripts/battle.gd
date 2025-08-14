@@ -53,7 +53,8 @@ var enemy_bars: Dictionary = {}  # enemy -> bar
 @export var HB_SCALE_WITH_ZOOM := true   # масштабировать ли бар при зуме
 @export var HB_MIN_SCALE := 0.8
 @export var HB_MAX_SCALE := 1.8
-
+@export var AOE_CAM_ZOOM := 1.12         # мягкий зум для AoE (меньше CINE_ZOOM)
+@export var AOE_CAM_SHIFT_PX := 180.0    # сдвиг камеры вправо в пикселях экрана
 
 var _cam_saved := { "pos": Vector2.ZERO, "zoom": Vector2.ONE, "proc": Node.PROCESS_MODE_INHERIT, "smooth": false }
 var _vp_saved_xform: Transform2D = Transform2D.IDENTITY
@@ -244,34 +245,79 @@ func _exit_cinematic() -> void:
 			e.modulate = Color(1,1,1,1)
 	
 func _perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dictionary) -> void:
-	# 1) подготовка позиций/камера/UI
-	if targets.size() == 0: return
-	var main_tgt: Node2D = targets[0]
+	if user == null:
+		return
+	if not is_instance_valid(user):
+		return
+	if targets.size() == 0:
+		return
+
+	var s_target := String(ability.get("target", ""))
+	var is_aoe := s_target == "all_enemies"
+	var typ := String(ability.get("type", ""))
+	var need_move := typ == "physical"
+
+	# --- центр AoE как в _do_melee_aoe ---
+	var aoe_focus := _screen_center_world() + Vector2(AOE_CENTER_X_OFFSET, AOE_CENTER_Y_OFFSET)
+	var sumy := 0.0
+	var cnt := 0
+	for e in enemies:
+		if is_instance_valid(e):
+			if e.health > 0:
+				sumy += e.global_position.y
+				cnt += 1
+	if cnt > 0:
+		aoe_focus.y = sumy / cnt + APPROACH_Y
+
+	# --- камера перед действием ---
+	if is_aoe:
+		# переводим экранный сдвиг в мировые координаты, работая и без активной камеры
+		var zoom_now := _get_view_zoom()
+		if zoom_now <= 0.001:
+			zoom_now = 1.0
+		var shift_x_world := AOE_CAM_SHIFT_PX / zoom_now
+		var aoe_cam_focus := aoe_focus + Vector2(shift_x_world, 0.0)
+		await _cam_push_focus(aoe_cam_focus, AOE_CAM_ZOOM)
+	else:
+		var main_tgt: Node2D = targets[0]
+		await _cam_push_focus(main_tgt.global_position, CINE_ZOOM)
+
 	_enter_cinematic(targets)
 	_update_enemy_bars_positions()
-	await _cam_push_focus(main_tgt.global_position)
 
-	# если физическая и одиночная — подбежали один раз вначале
-	var typ := String(ability.get("type",""))
-	var need_move := typ == "physical" and targets.size() == 1
+	# --- движение бойца (как раньше) ---
 	var mover: Node2D = user.get_node_or_null("MotionRoot") as Node2D
-	if mover == null: mover = user
+	if mover == null:
+		mover = user
 	var start_pos := mover.global_position
-	if need_move:
-		var hit_pos := _approach_point(user, main_tgt)
-		_play_if_has(user.anim, "run")
-		await create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)\
-			.tween_property(mover, "global_position", hit_pos, 0.18).finished
 
-	# 2) цикл по ступеням
-	var qte = ability.get("qte", {})
-	var steps: Array = qte.get("steps", [])
-	var res_on_success = qte.get("on_success", {})
-	var res_on_perfect = qte.get("on_perfect", {})
-	var res_on_fail    = qte.get("on_fail", {})
+	var move_mode := "none"  # "single" / "aoe"
+	if typ == "physical":
+		if is_aoe:
+			move_mode = "aoe"
+		elif targets.size() == 1:
+			move_mode = "single"
+
+	if move_mode == "single":
+		var hit_pos := _approach_point(user, targets[0])
+		_play_if_has(user.anim, "run")
+		var tw_in := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw_in.tween_property(mover, "global_position", hit_pos, 0.18)
+		await tw_in.finished
+	elif move_mode == "aoe":
+		_play_if_has(user.anim, "run")
+		var tw_in2 := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw_in2.tween_property(mover, "global_position", aoe_focus, 0.22)
+		await tw_in2.finished
+
+	# --- QTE-ступени ---
+	var qte_dict = ability.get("qte", {})
+	var steps: Array = qte_dict.get("steps", [])
+	var res_on_success = qte_dict.get("on_success", {})
+	var res_on_perfect = qte_dict.get("on_perfect", {})
+	var res_on_fail    = qte_dict.get("on_fail", {})
 
 	if steps.size() == 0:
-		# нет QTE — старое поведение
 		for t in targets:
 			if is_instance_valid(t) and t.health > 0:
 				_apply_melee_hit(t, int(ability.get("damage", user.attack)), {"done": false}, ability.get("effects_to_targets", []), user)
@@ -287,70 +333,89 @@ func _perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dictionary
 					clip = "skill"
 			_play_if_has(user.anim, clip)
 
-			# замедление
 			var slow := float(step.get("slowmo", 0.0))
 			var prev_scale := Engine.time_scale
 			if slow > 0.0:
-				Engine.time_scale = clamp(1.0 - slow, 0.05, 1.0)
+				var s := 1.0 - slow
+				if s < 0.05: s = 0.05
+				Engine.time_scale = s
 
-			# запускаем QTE
 			var dur := float(step.get("duration", 1.0))
 			var segs = step.get("segments", [])
 			qte_bar.start(dur, segs)
 			var result: Dictionary = await qte_bar.finished
-
-			# возвращаем тайм-скейл
 			Engine.time_scale = prev_scale
 
-			# модификаторы по результату
 			var mod := {}
-			if result.get("perfect", false) and not res_on_perfect.is_empty():
+			if result.get("perfect", false) and res_on_perfect.size() > 0:
 				mod = res_on_perfect
-			elif result.get("success", false) and not res_on_success.is_empty():
+			elif result.get("success", false) and res_on_success.size() > 0:
 				mod = res_on_success
-			elif not res_on_fail.is_empty():
+			elif res_on_fail.size() > 0:
 				mod = res_on_fail
 
 			var dmg_base := int(ability.get("damage", user.attack))
-			var mult := float(mod.get("damage_mult", 1.0))
+			var mult := 1.0
+			if mod.has("damage_mult"):
+				mult = float(mod.get("damage_mult"))
 			var dmg := int(round(dmg_base * mult))
 
-			# бонус к длительности эффектов
-			var dur_bonus := int(mod.get("duration_bonus", 0))
 			var effs: Array = ability.get("effects_to_targets", [])
-			if dur_bonus != 0 and effs.size() > 0:
-				var patched: Array = []
-				for e in effs:
-					var d = e.duplicate(true)
-					d["duration"] = int(d.get("duration", 0)) + dur_bonus
-					patched.append(d)
-				effs = patched
+			if mod.has("duration_bonus") and effs.size() > 0:
+				var bonus := int(mod.get("duration_bonus"))
+				if bonus != 0:
+					var patched: Array = []
+					for e in effs:
+						var d = e.duplicate(true)
+						d["duration"] = int(d.get("duration", 0)) + bonus
+						patched.append(d)
+					effs = patched
 
-			# расширение области (опционально)
-			var spread := String(mod.get("spread", "none"))
+			# выбор целей этой ступени (random_enemies / all_enemies)
 			var real_targets := targets
-			if spread == "all_enemies":
-				real_targets = []
-				for e in enemies:
-					if is_instance_valid(e) and e.health > 0: real_targets.append(e)
-			elif spread == "all_allies":
-				real_targets = []
-				var pool := heroes if user.team == "hero" else enemies
-				for a in pool:
-					if is_instance_valid(a) and a.health > 0: real_targets.append(a)
+			if step.has("select"):
+				var sel = step["select"]
+				var mode := String(sel.get("mode", ""))
+				if mode == "random_enemies":
+					var cnt_pick := int(sel.get("count", 1))
+					var pool: Array = []
+					for e in enemies:
+						if is_instance_valid(e) and e.health > 0:
+							pool.append(e)
+					pool.shuffle()
+					real_targets = []
+					var n = min(cnt_pick, pool.size())
+					for i in range(n):
+						real_targets.append(pool[i])
+				elif mode == "all_enemies":
+					real_targets = []
+					for e in enemies:
+						if is_instance_valid(e) and e.health > 0:
+							real_targets.append(e)
 
-			# применяем хит от этой ступени
 			for t in real_targets:
 				if is_instance_valid(t) and t.health > 0:
 					_apply_melee_hit(t, dmg, {"done": false}, effs, user)
 
-			# ждём конца клипа (не дольше разумного)
 			await _wait_anim_end(user.anim, clip, 0.8)
+
+	# --- откат ---
+	if move_mode != "none":
+		var tw_out := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw_out.tween_property(mover, "global_position", start_pos, 0.22)
+		await tw_out.finished
+
+	_play_if_has(user.anim, "idle")
+	_update_enemy_bars_positions()
+	await _cam_pop()
+	_exit_cinematic()
+
 
 	# 3) откат позиций/камеры/UI
 	if need_move:
-		await create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)\
-			.tween_property(mover, "global_position", start_pos, 0.18).finished
+		var tw_out := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw_out.tween_property(mover, "global_position", start_pos, 0.18)
+		await tw_out.finished
 	_play_if_has(user.anim, "idle")
 	_update_enemy_bars_positions()
 	await _cam_pop()

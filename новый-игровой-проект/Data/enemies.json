@@ -1,0 +1,41 @@
+{
+  "enemies": {
+	"slime_green": {
+	  "nick": "Clue",
+	  "sprite": "res://Assets/enemies/Clue.png",
+	  "team": "enemy",
+	  "max_health": 70,
+	  "attack": 8,
+	  "defense": 3,
+	  "speed": 7,
+
+
+	  "dodge_window": 0.10,
+	  "block_window": 0.16,
+	  "block_reduce": 0.50,
+
+	  "abilities": [
+		{
+		  "name": "Шлепок",
+		  "type": "physical",
+		  "target": "single_enemy",
+		  "damage": 8
+		},
+		{
+		  "name": "Кислота",
+		  "type": "magic",
+		  "target": "all_enemies",
+		  "damage": 5,
+		  "qte": {
+			"steps": [
+			  { "anim": "cast", "duration": 0.9, "segments": [ { "start": 0.45, "end": 0.55 } ] }
+			],
+			"on_success": { "damage_mult": 1.0 },
+			"on_perfect": { "damage_mult": 1.2 },
+			"on_fail":    { "damage_mult": 0.8 }
+		  }
+		}
+	  ]
+	}
+  }
+}
