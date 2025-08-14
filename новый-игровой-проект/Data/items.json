@@ -1,0 +1,32 @@
+{
+  "potion_small": {
+	"name": "Малая хиллка",
+	"category": "food",
+	"sins": ["gluttony"],
+	"target": "single_ally",
+	"effect": "heal",
+	"heal": 25,
+	"stack_limit": 999,
+	"carry_cap": 5
+  },
+  "ether_small": {
+	"name": "Малый эфир",
+	"category": "alchemical",
+	"sins": ["greed"],
+	"target": "single_ally",
+	"effect": "restore_mana",
+	"mana": 15,
+	"stack_limit": 999,
+	"carry_cap": 5
+  },
+  "sandwich": {
+	"name": "Сэндвич",
+	"category": "meat",
+	"sins": ["gluttony"],
+	"target": "self",
+	"effect": "buff",
+	"buff": {"stat": "attack", "amount": 5, "duration": 3},
+	"stack_limit": 99,
+	"carry_cap": 3
+  }
+}

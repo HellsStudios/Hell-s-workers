@@ -8,7 +8,7 @@ var current_hero: Node2D
 @onready var SkillMenuContainer = $SkillMenuContainer
 @onready var ItemMenuContainer  = $ItemMenuContainer
 
-
+signal item_chosen(user, item_id)
 
 # Подготовка при показе
 func show_main_menu(hero: Node2D):
@@ -83,18 +83,48 @@ func _on_skill_index(i: int) -> void:
 func _on_skill_pressed(skill_data: Dictionary):
 	emit_signal("action_selected", "skill", current_hero, skill_data)
 
+
 # ——————— ПРЕДМЕТЫ ———————
 func update_item_buttons():
-	var inventory = GameManager.inventory
-	var index = 1
-	for item_key in inventory.keys():
+	# Сначала подчистим все кнопки списка предметов
+	var max_buttons := 0
+	for child in ItemMenuContainer.get_children():
+		if child is Button and String(child.name).begins_with("ItemButton"):
+			var b: Button = child
+			max_buttons += 1
+			b.visible = false
+			b.disabled = true
+			for c in b.get_signal_connection_list("pressed"):
+				b.disconnect("pressed", c.callable)
+
+	if current_hero == null:
+		return
+
+	# Разложим содержимое рюкзака героя
+	var ids = current_hero.pack.keys()
+	var index := 1
+	for id in ids:
+		if index > max_buttons:
+			break
+		var cnt := int(current_hero.pack[id])
+		if cnt <= 0:
+			continue
+		var def := GameManager.get_item_def(id)
+		if def.is_empty():
+			continue
+		# фильтр по запретным категориям
+		var cat := String(def.get("category",""))
+		if current_hero.forbidden_categories.has(cat):
+			continue
+
 		var button_path = "ItemMenuContainer/ItemButton%d" % index
 		if has_node(button_path):
-			var btn = get_node(button_path)
-			btn.text = "%s x%d" % [item_key, inventory[item_key].quantity]
+			var btn: Button = get_node(button_path)
+			var nm := String(def.get("name", id))
+			btn.text = "%s x%d" % [nm, cnt]
 			btn.visible = true
 			btn.disabled = false
-			btn.connect("pressed", Callable(self, "_on_item_pressed").bind(item_key))
+			btn.connect("pressed", Callable(self, "_on_item_pressed").bind(id))
 			index += 1
 
 func _on_item_pressed(item_key: String):

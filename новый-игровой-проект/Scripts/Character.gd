@@ -42,6 +42,52 @@ func _ready():
 	_init_abilities()
 	play_idle()
 
+@export var carry_slots_max := 3
+@export var forbidden_categories: Array[String] = []
+var pack: Dictionary = {}  # id -> количество (то, что ВЗЯТО в бой)
+
+func can_use_item(id: String) -> bool:
+	var def := GameManager.get_item_def(id)
+	if def.is_empty():
+		return false
+	var cat := String(def.get("category",""))
+	if forbidden_categories.has(cat):
+		return false
+	return true
+
+func _pack_types_used() -> int:
+	return pack.keys().size()
+
+func pack_add(id: String, count: int) -> int:
+	if count <= 0: 
+		return 0
+	var def := GameManager.get_item_def(id)
+	if def.is_empty():
+		return 0
+	if not pack.has(id) and _pack_types_used() >= carry_slots_max:
+		return 0
+	var cap := int(def.get("carry_cap", 99))
+	var have := int(pack.get(id, 0))
+	var space := cap - have
+	if space <= 0:
+		return 0
+	var add := count
+	if add > space:
+		add = space
+	pack[id] = have + add
+	return add
+
+func pack_consume(id: String, count: int = 1) -> bool:
+	var have := int(pack.get(id, 0))
+	if have < count:
+		return false
+	var left := have - count
+	if left > 0:
+		pack[id] = left
+	else:
+		pack.erase(id)
+	return true
+
 func play_idle() -> void:
 	# Проверяем, не играет ли уже Idle
 	if anim.current_animation != "idle":
@@ -65,6 +111,23 @@ func init_from_dict(d: Dictionary) -> void:
 	stamina = d.get("stamina", max_stamina)
 
 	abilities = d.get("skills", [])
+		# ... ваш старый код инициализации ...
+	if d.has("carry_slots_max"):
+		carry_slots_max = int(d["carry_slots_max"])
+	forbidden_categories.clear()
+	var raw_fc: Array = d.get("forbidden_categories", [])
+	for v in raw_fc:
+		if typeof(v) == TYPE_STRING:
+			forbidden_categories.append(v)
+		else:
+			forbidden_categories.append(String(v))
+	pack.clear()
+	if d.has("pack"):
+		for item in d["pack"]:
+			var id := String(item.get("id",""))
+			var cnt := int(item.get("count", 0))
+			if id != "" and cnt > 0:
+				pack[id] = cnt
 
 func _init_abilities():
 	if team == "hero":

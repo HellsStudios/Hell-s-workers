@@ -8,9 +8,37 @@ var day: int = 1
 var resources: int = 0
 var current_phase: int = 0
 var phase_names = ["Утро", "День", "Вечер", "Ночь"]
+var items_db: Dictionary = {}        # id -> def (из items.json)
+var base_inventory: Dictionary = {}  # id -> количество (на базе)
 
 func _ready() -> void:
 	load_heroes("res://Data/characters.json")
+	load_items_db("res://Data/items.json") 
+	
+func load_items_db(path: String = "res://Data/items.json") -> void:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null: 
+		push_error("[Items] DB not found: " + path); return
+	var txt := f.get_as_text()
+	items_db = JSON.parse_string(txt)
+	if typeof(items_db) != TYPE_DICTIONARY:
+		items_db = {}
+		push_error("[Items] JSON parse error")
+
+func get_item_def(id: String) -> Dictionary:
+	return items_db.get(id, {})
+
+func add_to_base(id: String, count: int) -> void:
+	if count <= 0: return
+	var cur := int(base_inventory.get(id, 0))
+	base_inventory[id] = cur + count
+
+func take_from_base(id: String, count: int) -> int:
+	var have := int(base_inventory.get(id, 0))
+	var take = min(count, have)
+	if take <= 0: return 0
+	base_inventory[id] = have - take
+	return take
 
 func load_heroes(path: String) -> void:
 	if not FileAccess.file_exists(path):

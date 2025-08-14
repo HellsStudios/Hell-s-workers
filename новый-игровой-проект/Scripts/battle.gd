@@ -54,6 +54,7 @@ var enemy_bars: Dictionary = {}  # enemy -> bar
 @export var HB_MIN_SCALE := 0.8
 @export var HB_MAX_SCALE := 1.8
 
+
 var _cam_saved := { "pos": Vector2.ZERO, "zoom": Vector2.ONE, "proc": Node.PROCESS_MODE_INHERIT, "smooth": false }
 var _vp_saved_xform: Transform2D = Transform2D.IDENTITY
 
@@ -811,10 +812,126 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 				, "single")
 
 		"item":
-			end_turn()
+			var item_id := String(data)
+			_handle_item_use(actor, item_id)
 
 		"skip":
 			end_turn()
+			
+func _handle_item_use(user: Node2D, item_id: String) -> void:
+	if user == null or not is_instance_valid(user):
+		show_player_options(current_actor)
+		return
+
+	var def := GameManager.get_item_def(item_id)
+	if def.is_empty():
+		show_player_options(user)
+		return
+
+	# если герой не может использовать эту категорию
+	if user.has_method("can_use_item"):
+		if not user.call("can_use_item", item_id):
+			show_player_options(user)
+			return
+
+	var tgt_mode := String(def.get("target", "self"))
+
+	if tgt_mode == "self":
+		_is_acting = true
+		await _apply_item(user, user, item_id, def)
+		_is_acting = false
+		end_turn()
+		return
+
+	if tgt_mode == "single_ally":
+		var allies: Array[Node2D] = []
+		var pool: Array[Node2D] = []
+		if user.team == "hero":
+			pool = heroes
+		else:
+			pool = enemies
+		for a in pool:
+			if is_instance_valid(a) and a.health > 0:
+				allies.append(a)
+		if allies.size() == 0:
+			show_player_options(user)
+			return
+
+		_build_target_overlay(user, allies, func(targets: Array) -> void:
+			var tgt_local: Node2D = targets[0]
+			_is_acting = true
+			await _apply_item(user, tgt_local, item_id, def)
+			_is_acting = false
+			end_turn()
+		, "single")
+		return
+
+	if tgt_mode == "all_allies":
+		var group: Array[Node2D] = []
+		if user.team == "hero":
+			group = heroes
+		else:
+			group = enemies
+		_is_acting = true
+		for g in group:
+			if is_instance_valid(g) and g.health > 0:
+				await _apply_item(user, g, item_id, def, true)
+		_is_acting = false
+		end_turn()
+		return
+
+	# при желании можно добавить "single_enemy"/"all_enemies" для боевых бомб и т.п.
+	show_player_options(user)
+
+
+func _apply_item(user: Node2D, target: Node2D, id: String, def: Dictionary, skip_anim := false) -> void:
+	# списываем из ЛИЧНОГО рюкзака; если нет — ничего не делаем
+	if not user.pack_consume(id, 1):
+		return
+
+	# играем «поддерживающую» анимацию — она же отработает heal/эффекты если мы соберём ability-словарь
+	var effect := String(def.get("effect",""))
+	var ability := {}
+
+	# 1) лечение — полностью отдаём в _do_support (он корректно лечит по "heal")
+	if effect == "heal":
+		ability["heal"] = int(def.get("heal", 0))
+
+	# 2) бафф — завернём в effects_to_self/targets, тогда _do_support сам навесит эффекты
+	if effect == "buff":
+		var b = def.get("buff", {})
+		if typeof(b) == TYPE_DICTIONARY:
+			var ex := {
+				"type": "stat_buff",
+				"stat": String(b.get("stat","attack")),
+				"amount": int(b.get("amount", 0)),
+				"duration": int(b.get("duration", 1))
+			}
+			# если цель — сам пользователь, кладём в effects_to_self, иначе — на цель
+			if target == user:
+				ability["effects_to_self"] = [ex]
+			else:
+				ability["effects_to_targets"] = [ex]
+
+	# анимация (если не попросили пропустить)
+	if not skip_anim:
+		await _do_support(user, target, ability)
+
+	# 3) восполнение маны — _do_support не делает этого, поэтому применим прямо тут
+	if effect == "restore_mana":
+		var mp := int(def.get("mana", 0))
+		target.mana = min(target.max_mana, target.mana + mp)
+
+	# 4) прямой урон предметом (если потребуется позже)
+	if effect == "damage":
+		var dmg := int(def.get("damage", 0))
+		target.health = max(0, target.health - dmg)
+		if target.health <= 0:
+			_on_enemy_died(target)
+
+	# на всякий — обновим подписи на кнопках предметов
+	if action_panel and action_panel.visible:
+		action_panel.update_item_buttons()
 			
 func _eff_speed(ch: Node2D) -> float:
 	if ch != null and is_instance_valid(ch) and ch.has_method("effective_stat"):

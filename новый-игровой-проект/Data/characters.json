@@ -7,7 +7,10 @@
 	  "max_health": 110, "health": 110,
 	  "max_stamina": 60, "stamina": 60,
 	  "max_mana": 60, "mana": 60,
-	  "attack": 15, "defense": 10, "speed": 20,
+	  "attack": 15, "defense": 10, "speed": 9,
+	  "carry_slots_max": 5,
+	  "forbidden_categories": [],
+	  "pack": [],
 	  "skills": [
 		{
 		  "name": "Мощный удар",
@@ -18,7 +21,7 @@
 		  "qte": {
 		  "steps": [
 			{ "anim":"attack",  "duration": 1.10, "segments": [[0.35,0.45]],            "slowmo": 0.25 },
-			{ "anim":"attack", "duration": 1.00, "segments": [[0.25,0.33],[0.62,0.68]], "slowmo": 0.25 }
+			{ "anim":"attack2", "duration": 1.00, "segments": [[0.25,0.33],[0.62,0.68]], "slowmo": 0.25 }
 		  ],
 		  "on_success": { "damage_mult": 1.25, "duration_bonus": 1, "spread": "none" },
 		  "on_perfect": { "damage_mult": 1.50, "duration_bonus": 2, "spread": "all_enemies" },
@@ -51,6 +54,13 @@
 	  "max_stamina": 30, "stamina": 30,
 	  "max_mana": 90, "mana": 90,
 	  "attack": 8, "defense": 6, "speed": 12,
+		"carry_slots_max": 3,
+	  "forbidden_categories": ["meat"],
+	  "pack": [
+		{"id": "potion_small", "count": 5},
+		{"id": "ether_small", "count": 5},
+		{"id": "sandwich", "count": 1}
+	  ],
 	  "skills": [
 		{
 		  "name": "Ядовитый удар",
@@ -89,6 +99,9 @@
 	  "max_stamina": 10, "stamina": 10,
 	  "max_mana": 60, "mana": 60,
 	  "attack": 10, "defense": 8, "speed": 10,
+	  "carry_slots_max": 5,
+	  "forbidden_categories": [],
+	  "pack": [],
 	  "skills": [
 		{
 		  "name": "Боевой клич",
