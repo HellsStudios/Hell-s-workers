@@ -1,6 +1,6 @@
 {
   "enemies": {
-	"slime_green": {
+	"Clue": {
 	  "nick": "Clue",
 	  "sprite": "res://Assets/enemies/Clue.png",
 	  "team": "enemy",
@@ -8,27 +8,32 @@
 	  "attack": 8,
 	  "defense": 3,
 	  "speed": 7,
-
-
 	  "dodge_window": 0.10,
 	  "block_window": 0.16,
 	  "block_reduce": 0.50,
-
-	  "abilities": [
+	  "skills": [
 		{
 		  "name": "Шлепок",
 		  "type": "physical",
 		  "target": "single_enemy",
-		  "damage": 8
+		  "damage": 8,
+		  "qte": {
+			"steps": [
+			  { "anim": "attack", "duration": 0.60, "segments": [[0.42, 0.52]] }
+			],
+			"on_success": { "damage_mult": 1.0 },
+			"on_perfect": { "damage_mult": 1.25 },
+			"on_fail":    { "damage_mult": 0.80 }
+		  }
 		},
 		{
-		  "name": "Кислота",
+		  "name": "Атака тенью",
 		  "type": "magic",
 		  "target": "all_enemies",
 		  "damage": 5,
 		  "qte": {
 			"steps": [
-			  { "anim": "cast", "duration": 0.9, "segments": [ { "start": 0.45, "end": 0.55 } ] }
+			  { "anim": "cast", "duration": 0.9, "segments": [[0.45, 0.55]] }
 			],
 			"on_success": { "damage_mult": 1.0 },
 			"on_perfect": { "damage_mult": 1.2 },

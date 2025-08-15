@@ -1330,7 +1330,6 @@ tracks/54/keys = {
 
 [sub_resource type="Animation" id="Animation_owm7s"]
 resource_name = "Block"
-loop_mode = 1
 tracks/0/type = "value"
 tracks/0/imported = false
 tracks/0/enabled = true
@@ -1841,7 +1840,6 @@ tracks/20/keys = {
 
 [sub_resource type="Animation" id="Animation_nytcm"]
 resource_name = "evasion"
-loop_mode = 1
 tracks/0/type = "value"
 tracks/0/imported = false
 tracks/0/enabled = true

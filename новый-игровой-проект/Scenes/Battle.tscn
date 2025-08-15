@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3 uid="uid://dmmdoix2044ef"]
+[gd_scene load_steps=6 format=3 uid="uid://dmmdoix2044ef"]
 
 [ext_resource type="Script" uid="uid://cygojaswliwkw" path="res://Scripts/battle.gd" id="1_vr6xi"]
 [ext_resource type="Script" uid="uid://dn06jxngyerns" path="res://Scripts/action_panel.gd" id="2_vr6xi"]
 [ext_resource type="PackedScene" uid="uid://fkg7ej6bbeno" path="res://Scenes/PartyHUD.tscn" id="3_2h7oj"]
 [ext_resource type="PackedScene" uid="uid://ckjklqlt5u6is" path="res://Scenes/qte_bar.tscn" id="4_1samx"]
+[ext_resource type="PackedScene" uid="uid://dyjer5wysyjyg" path="res://Scenes/defence_qte.tscn" id="5_p46lj"]
 
 [node name="Battle" type="Node2D"]
 script = ExtResource("1_vr6xi")
@@ -145,6 +146,9 @@ offset_right = 0.0
 offset_bottom = 0.0
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="DefenseQTE" parent="UI" instance=ExtResource("5_p46lj")]
+anchors_preset = 15
 
 [connection signal="button_down" from="UI/ActionPanel/MainMenuContainer/AttackButton" to="UI/ActionPanel" method="_on_AttackButton_pressed"]
 [connection signal="button_down" from="UI/ActionPanel/MainMenuContainer/SkillButton" to="UI/ActionPanel" method="_on_SkillButton_pressed"]
