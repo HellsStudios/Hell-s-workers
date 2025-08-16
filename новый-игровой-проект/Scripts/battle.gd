@@ -76,6 +76,90 @@ var _battle_over := false
 var _cam_saved := { "pos": Vector2.ZERO, "zoom": Vector2.ONE, "proc": Node.PROCESS_MODE_INHERIT, "smooth": false }
 var _vp_saved_xform: Transform2D = Transform2D.IDENTITY
 
+func _apply_berit_recipe_if_any(user: Node2D, skill: Dictionary) -> Dictionary:
+	if user == null or not is_instance_valid(user):
+		return skill
+	if String(user.nick) != "Berit":
+		return skill
+
+	var recipe := GameManager.get_berit_recipe(String(skill.get("name","")))
+	if recipe.size() == 0:
+		return skill
+
+	var need: Dictionary = recipe.get("consume", {})
+	if user.has_method("can_pay_coins"):
+		if not user.can_pay_coins(need):
+			return skill
+	else:
+		return skill
+
+	# 1) списываем нужные монеты
+	user.pay_coins(need)
+
+	# 2) начисляем монеты из рецепта
+	var grants: Dictionary = recipe.get("grant", {})
+	for k in grants.keys():
+		var n := int(grants[k])
+		for i in range(n):
+			user.add_coin(k)
+
+	# 3) формируем усиленную копию умения
+	var enhanced := skill.duplicate(true)
+	var enh: Dictionary = recipe.get("enhance", {})
+
+	# урон/хил
+	if enh.has("damage_mult"):
+		var d := int(enhanced.get("damage", user.attack))
+		enhanced["damage"] = int(round(d * float(enh["damage_mult"])))
+	if enh.has("heal_mult"):
+		var h := int(enhanced.get("heal", 0))
+		enhanced["heal"] = int(round(h * float(enh["heal_mult"])))
+
+	# бонус длительности для уже существующих эффектов
+	if enh.has("duration_bonus"):
+		var bonus := int(enh.get("duration_bonus", 0))
+		if bonus != 0:
+			for key in ["effects_to_targets","effects_to_self"]:
+				var arr: Array = enhanced.get(key, [])
+				if arr.size() > 0:
+					var patched: Array = []
+					for e in arr:
+						var d2 = e.duplicate(true)
+						d2["duration"] = int(d2.get("duration", 0)) + bonus
+						patched.append(d2)
+					enhanced[key] = patched
+
+	# добавочные эффекты
+	if enh.has("add_effects_to_targets"):
+		var extra_t: Array = enh.get("add_effects_to_targets", [])
+		var base_t: Array = enhanced.get("effects_to_targets", [])
+		enhanced["effects_to_targets"] = base_t + extra_t
+
+	if enh.has("add_effects_to_self"):
+		var extra_s: Array = enh.get("add_effects_to_self", [])
+		var base_s: Array = enhanced.get("effects_to_self", [])
+		enhanced["effects_to_self"] = base_s + extra_s
+
+	# смена таргета (например, на all_enemies)
+	if enh.has("target"):
+		enhanced["target"] = String(enh["target"])
+
+	return enhanced
+
+# кто в партии
+func _get_hero_by_name(name: String) -> Node2D:
+	for h in heroes:
+		if is_instance_valid(h) and String(h.nick) == name:
+			return h
+	return null
+
+func _party_has(name: String) -> bool:
+	return _get_hero_by_name(name) != null
+
+# счётчики для условий «синих» и «зелёных» монет
+var _mana_spent_pool := 0              # суммарная потраченная героями мана для "blue"
+var _enemy_debuff_applied := 0         # сколько наложено дебаффов для "green"
+
 func _ai_map_style(style_raw: String) -> String:
 	var s := style_raw.strip_edges().to_lower()
 	# RU → EN (внутренние коды)
@@ -1146,6 +1230,10 @@ func _ready() -> void:
 	action_panel.hide()
 	get_viewport().connect("size_changed", Callable(self, "_on_viewport_resized"))
 	spawn_party()
+	var berit := _get_hero_by_name("Berit")
+	if action_panel and berit and berit.has_signal("coins_changed"):
+		if not berit.is_connected("coins_changed", Callable(action_panel, "_on_berit_coins_changed")):
+			berit.connect("coins_changed", Callable(action_panel, "_on_berit_coins_changed"))
 	spawn_enemies()
 	_spawn_enemy_bars()
 	_build_party_hud()
@@ -1218,12 +1306,18 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 
 		"skill":
 			var skill: Dictionary = data if typeof(data) == TYPE_DICTIONARY else {}
-			var s_target := String(skill.get("target",""))
 			var is_magic := String(skill.get("type","")) == "magic"
 			var base_dmg := int(skill.get("damage", actor.attack))
 			var eff_tgt: Array = skill.get("effects_to_targets", [])
 			_apply_self_effects_if_any(actor, skill)
 
+			# — Попытка усиления Берита ДО выбора ветки —
+			if String(actor.nick) == "Berit":
+				print("[BERIT] try recipe for '", String(skill.get("name","")), "' coins=", (actor.ether_coins if actor and actor.has_method("coins_count") else []))
+				skill = _maybe_apply_berit_enhance(actor, skill)
+				if skill.has("__berit_enhanced"): print("[BERIT] enhanced=true")
+
+			var s_target := String(skill.get("target",""))
 			if s_target == "single_enemy":
 				var list: Array[Node2D] = []
 				for e in enemies:
@@ -1394,6 +1488,9 @@ func _handle_item_use(user: Node2D, item_id: String) -> void:
 		_is_acting = true
 		await _apply_item(user, user, item_id, def)
 		_is_acting = false
+		# после применения предмета
+		if user != null and String(user.nick) == "Berit":
+			user.add_coin("yellow")
 		end_turn()
 		return
 
@@ -1416,6 +1513,8 @@ func _handle_item_use(user: Node2D, item_id: String) -> void:
 			_is_acting = true
 			await _apply_item(user, tgt_local, item_id, def)
 			_is_acting = false
+			if user != null and String(user.nick) == "Berit":
+				user.add_coin("yellow")
 			end_turn()
 		, "single")
 		return
@@ -1431,6 +1530,8 @@ func _handle_item_use(user: Node2D, item_id: String) -> void:
 			if is_instance_valid(g) and g.health > 0:
 				await _apply_item(user, g, item_id, def, true)
 		_is_acting = false
+		if user != null and String(user.nick) == "Berit":
+			user.add_coin("yellow")
 		end_turn()
 		return
 
@@ -1495,8 +1596,18 @@ func _eff_speed(ch: Node2D) -> float:
 func _apply_effects(list: Array, target: Node2D) -> void:
 	if target == null or not is_instance_valid(target): return
 	if not target.has_method("add_effect"): return
+	var debuffs_applied := 0
 	for ex in list:
 		target.call("add_effect", ex)
+		if target.team == "enemy" and not bool(ex.get("is_buff", false)):
+			debuffs_applied += 1
+
+	if debuffs_applied > 0 and _party_has("Dante"):
+		_enemy_debuff_applied += debuffs_applied
+		var berit := _get_hero_by_name("Berit")
+		while _enemy_debuff_applied >= 3 and berit != null:
+			_enemy_debuff_applied -= 3
+			berit.add_coin("green")
 
 # —————————  СОЗДАЁМ  ГЕРОЕВ  —————————
 func spawn_party() -> void:
@@ -2245,18 +2356,80 @@ func _can_pay_cost(user: Node2D, data: Dictionary) -> bool:
 	return true
 
 func _pay_cost(user: Node2D, data: Dictionary) -> void:
-	var costs: Dictionary = data.get("costs", {})
-	if costs.is_empty():
-		var ct = data.get("cost_type", null)
-		var c  = int(data.get("cost", 0))
-		if ct != null and c > 0:
-			costs = {}; costs[String(ct)] = c
+	# 1) Нормализуем формат стоимости (сливаем старый cost_type/cost в costs)
+	var costs: Dictionary = {}
+	var src_costs: Dictionary = data.get("costs", {})
+	for k in src_costs.keys():
+		costs[String(k)] = int(src_costs[k])
 
-	if costs.size() == 0: return
+	var ct = data.get("cost_type", null)
+	var c  = int(data.get("cost", 0))
+	if ct != null and c > 0:
+		var key := String(ct)
+		costs[key] = int(costs.get(key, 0)) + c
 
-	user.health  = max(1, user.health  - int(costs.get("hp", 0)))   # минимум 1 HP
-	user.mana    = max(0, user.mana    - int(costs.get("mana", 0)))
-	user.stamina = max(0, user.stamina - int(costs.get("stamina", 0)))
+	if costs.size() == 0:
+		return
+
+	# 2) Считаем потраченную ману ОДИН раз, после нормализации
+	var spent_hp  := int(costs.get("hp", 0))
+	var spent_mp  := int(costs.get("mana", 0))
+	var spent_sta := int(costs.get("stamina", 0))
+
+	# 3) Применяем
+	if spent_hp > 0:
+		user.health  = max(1, user.health  - spent_hp)   # не умираем оплатой
+	if spent_mp > 0:
+		user.mana    = max(0, user.mana    - spent_mp)
+	if spent_sta > 0:
+		user.stamina = max(0, user.stamina - spent_sta)
+
+	# 4) Синие монеты Бериту: суммируем всю потраченную героями ману, если в партии есть Sally
+	if spent_mp > 0 and user.team == "hero" and _party_has("Sally"):
+		_mana_spent_pool += spent_mp
+		var berit := _get_hero_by_name("Berit")
+		while _mana_spent_pool >= 20 and berit != null:
+			_mana_spent_pool -= 20
+			berit.add_coin("blue")   # Character.gd должен эмитить coins_changed
+
+func _maybe_apply_berit_enhance(actor: Node2D, skill: Dictionary) -> Dictionary:
+	if actor == null or not is_instance_valid(actor): return skill
+	if String(actor.nick) != "Berit": return skill
+
+	var name := String(skill.get("name","")).strip_edges()
+	var recipe := GameManager.get_berit_recipe(name)
+	if recipe.is_empty():
+		print("[BERIT] no recipe for '", name, "'.")
+		return skill
+
+	if not actor.can_pay_coins(recipe.get("consume", {})):
+		print("[BERIT] recipe exists for '", name, "' but coins are not enough. have=", actor.ether_coins, " need=", recipe.get("consume", {}))
+		return skill
+
+	print("[BERIT] APPLY recipe for '", name, "'. before=", actor.ether_coins)
+
+	# 1) списать
+	actor.pay_coins(recipe.get("consume", {}))
+	# 2) выдать
+	var grants: Dictionary = recipe.get("grant", {})
+	for k in grants.keys():
+		for i in range(int(grants[k])): actor.add_coin(k)
+
+	# 3) собрать усиленную копию
+	var enhanced := skill.duplicate(true)
+	var enh = recipe.get("enhance", {})
+
+	if enh.has("damage_mult"):
+		var d := int(enhanced.get("damage", actor.attack))
+		enhanced["damage"] = int(round(d * float(enh["damage_mult"])))
+
+	if enh.has("target"):
+		enhanced["target"] = String(enh["target"])  # например "all_enemies"
+
+	enhanced["__berit_enhanced"] = true
+	print("[BERIT] OK. after=", actor.ether_coins, " target=", String(enhanced.get("target","")), " dmg=", int(enhanced.get("damage", 0)))
+	return enhanced
+
 
 func process_turn():
 	if _battle_over:

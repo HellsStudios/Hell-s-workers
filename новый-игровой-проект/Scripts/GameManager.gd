@@ -13,6 +13,39 @@ var base_inventory: Dictionary = {}  # id -> количество (на базе
 
 var enemies_db: Dictionary = {}  # id -> деф
 
+var _berit_mech_loaded := false
+var _berit_recipes := {}
+
+
+func _load_berit_mechanics() -> void:
+	if _berit_mech_loaded:
+		return
+	_berit_mech_loaded = true
+	var path := "res://Data/berit_mechanics.json"
+	if not ResourceLoader.exists(path):
+		push_warning("Не найден berit_mechanics.json по пути: " + path)
+		_berit_recipes = {}
+		return
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f:
+		var text := f.get_as_text()
+		f.close()
+		var data = JSON.parse_string(text)
+		if typeof(data) == TYPE_DICTIONARY:
+			_berit_recipes = data
+		else:
+			_berit_recipes = {}
+	else:
+		_berit_recipes = {}
+
+func get_berit_recipe(skill_name: String) -> Dictionary:
+	_load_berit_mechanics()
+	if _berit_recipes.has(skill_name):
+		var d = _berit_recipes[skill_name]
+		if typeof(d) == TYPE_DICTIONARY:
+			return d
+	return {}
+
 func load_enemies_db(path: String = "res://Data/enemies.json") -> void:
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:

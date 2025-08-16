@@ -1,0 +1,7 @@
+{
+  "Печать начальства": {
+	"consume": { "yellow": 2, "blue": 1 },
+	"grant":   { "green": 2 },
+	"enhance": { "damage_mult": 1.35, "target": "all_enemies" }
+  }
+}

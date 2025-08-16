@@ -42,6 +42,45 @@ var abilities: Array = []
 # Команда (сторона) персонажа: "hero" или "enemy"
 var team: String = ""
 
+signal coins_changed
+var ether_coins: Array[String] = []  # ["yellow","blue","green"], максимум 7
+
+func coins_count() -> int:
+	return ether_coins.size()
+
+func add_coin(kind: String) -> void:
+	if ether_coins.size() >= 7:
+		ether_coins.pop_front()   # «старые затираются»
+	ether_coins.append(kind)
+	print("[COINS] +", kind, " -> ", ether_coins)
+	emit_signal("coins_changed")
+
+func can_pay_coins(req: Dictionary) -> bool:
+	var have := {"yellow":0, "blue":0, "green":0}
+	for k in ether_coins:
+		have[k] = int(have.get(k,0)) + 1
+	for col in req.keys():
+		if have.get(col,0) < int(req[col]):
+			return false
+	return true
+
+func pay_coins(req: Dictionary) -> void:
+	if not can_pay_coins(req):
+		print("[COINS] not enough to pay ", req, " have=", ether_coins)
+		return
+	for col in req.keys():
+		var need := int(req[col])
+		var i := 0
+		while i < ether_coins.size() and need > 0:
+			if ether_coins[i] == col:
+				ether_coins.remove_at(i)
+				need -= 1
+			else:
+				i += 1
+	print("[COINS] paid ", req, " -> ", ether_coins)
+	emit_signal("coins_changed")
+
+
 func _ready():
 	_init_abilities()
 	play_idle()
