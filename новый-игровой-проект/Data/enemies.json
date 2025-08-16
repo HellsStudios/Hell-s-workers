@@ -88,6 +88,54 @@
 		  ]
 		}
 	  ]
+	},
+	"Alex": {
+  "nick": "Alex",
+  "sprite": "res://Assets/enemies/Alex.png",
+  "team": "enemy",
+  "ai_style": "cunning",
+  "max_health": 120,
+  "attack": 12,
+  "defense": 5,
+  "speed": 11,
+  "dodge_window": 0.07,
+  "block_window": 0.16,
+  "block_reduce": 0.50,
+  "skills": [
+	{
+	  "name": "Гипноз",
+	  "type": "magic",
+	  "target": "single_enemy",
+	  "effects_to_targets": [
+		{ "id": "hypnosis", "name": "Гипноз", "is_buff": false, "stun": true, "duration": 2 }
+	  ],
+	  "qte": { "steps":[{ "anim":"cast", "duration":0.8, "segments":[[0.44,0.56]] }] }
+	},
+	{
+	  "name": "Вивисекция",
+	  "type": "magic",
+	  "target": "single_enemy",
+	  "damage": 18,
+	  "accuracy": 0.95,
+	  "qte": { "steps":[{ "anim":"cast", "duration":0.7, "segments":[[0.42,0.52]] }] }
+	},
+	{
+	  "name": "Пожирание",
+	  "type": "special",
+	  "target": "single_enemy",
+	  "special": "devour",
+	  "hp_threshold": 0.5,
+	  "effects_to_self": [
+		{ "id": "sated", "name": "Сытость", "is_buff": true, "defense": 6, "regen": 5, "duration": 999 }
+	  ],
+	  "qte": { "steps":[{ "anim":"attack", "duration":0.8, "segments":[[0.40,0.55]] }] },
+
+	  "conditions": {
+		"self_not_devouring": true,   
+		"self_effect_absent": "sated" 
+	  }
 	}
+  ]
+}
   }
 }

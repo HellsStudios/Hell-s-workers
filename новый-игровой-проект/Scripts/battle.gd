@@ -1,6 +1,5 @@
 extends Node2D   # или Node, если у вас без координат
 var _current_visual_order: Array[Node2D] = []  # как иконки реально стоят сейчас
-const _SLOT_W := ICON_W + ICON_GAP
 const MAX_TOTAL_ANIM := 0.30
 const MIN_STEP_DUR   := 0.05
 @export var APPROACH_X := 120.0     # насколько ЛЕВЕЕ цели становиться
@@ -32,8 +31,9 @@ var last_actor: Node2D = null   # кто реально ходит в этот �
 var RECALC_SPEED_EACH_ROUND := true
 const ICON_W := 48
 const ICON_GAP := 16  # было 8, сделал крупнее
+const _SLOT_W := ICON_W + ICON_GAP
 var actors: Array[Node2D] = []   # ← общий список участников
-const ICON_SCN := preload("res://scenes/turn_icon.tscn")
+const ICON_SCN := preload("res://Scenes/turn_icon.tscn")
 const PLACEHOLDER := "res://Assets/icons/characters/placeholder.png"
 var char_to_icon: Dictionary = {}  # character -> TextureRect
 var turn_queue: Array = []        # очередь ходов               <── объявили!
@@ -55,7 +55,7 @@ var enemy_bars: Dictionary = {}  # enemy -> bar
 @export var HB_MAX_SCALE := 1.8
 @export var AOE_CAM_ZOOM := 1.12         # мягкий зум для AoE (меньше CINE_ZOOM)
 @export var AOE_CAM_SHIFT_PX := 180.0    # сдвиг камеры вправо в пикселях экрана
-@export var ENCOUNTER_ENEMIES: Array[String] = ["Yezt","Clue","Yezt"]
+@export var ENCOUNTER_ENEMIES: Array[String] = ["Yezt","Clue","Alex"]
 
 # параметры защиты по умолчанию
 @export var DODGE_WINDOW_DEFAULT := 0.01
@@ -67,6 +67,7 @@ var enemy_bars: Dictionary = {}  # enemy -> bar
 @export var MAGIC_CAM_SHIFT_PX := -100.0
 
 signal battle_finished(result: String)
+var _devour_map := {}
 
 @export var SUPPORT_CAM_SHIFT_PX := 180.0   # баффы: герои ← (влево), враги → (вправо)
 
@@ -75,6 +76,28 @@ var _battle_over := false
 
 var _cam_saved := { "pos": Vector2.ZERO, "zoom": Vector2.ONE, "proc": Node.PROCESS_MODE_INHERIT, "smooth": false }
 var _vp_saved_xform: Transform2D = Transform2D.IDENTITY
+
+func _is_devoured(u: Node2D) -> bool:
+	return u != null and is_instance_valid(u) and bool(u.get_meta("devoured", false))
+
+func _has_effect(u: Node2D, id: String) -> bool:
+	if u == null or not is_instance_valid(u): return false
+	if u.has_method("list_effects"):
+		for e in u.call("list_effects"):
+			if typeof(e) == TYPE_DICTIONARY and String(e.get("id","")) == id:
+				return true
+	return false
+
+func _is_action_blocked(u: Node2D) -> bool:
+	if u == null or not is_instance_valid(u): return false
+	if _is_devoured(u): return true
+	if u.has_method("list_effects"):
+		for e in u.call("list_effects"):
+			if typeof(e) != TYPE_DICTIONARY: continue
+			if bool(e.get("stun", false)): return true
+			if bool(e.get("skip_turn", false)): return true
+			if String(e.get("id","")) == "hypnosis": return true
+	return false
 
 func _apply_berit_recipe_if_any(user: Node2D, skill: Dictionary) -> Dictionary:
 	if user == null or not is_instance_valid(user):
@@ -243,7 +266,7 @@ func _ally_lowest_hp(pool: Array[Node2D]) -> Node2D:
 	var best: Node2D = null
 	var best_ratio := 999.0
 	for a in pool:
-		if not is_instance_valid(a) or a.health <= 0: continue
+		if not is_instance_valid(a) or a.health <= 0 or _is_devoured(a): continue
 		var ratio = float(a.health) / max(1, a.max_health)
 		if ratio < best_ratio:
 			best_ratio = ratio
@@ -253,7 +276,7 @@ func _ally_lowest_hp(pool: Array[Node2D]) -> Node2D:
 func _random_alive(pool: Array[Node2D]) -> Node2D:
 	var arr: Array[Node2D] = []
 	for a in pool:
-		if is_instance_valid(a) and a.health > 0:
+		if is_instance_valid(a) and a.health > 0 and not _is_devoured(a):
 			arr.append(a)
 	if arr.is_empty(): return null
 	return arr[randi() % arr.size()]
@@ -1722,22 +1745,32 @@ func _pick_next_actor() -> Node2D:
 	var all := heroes + enemies
 	var best_idx := -1
 	var min_time := INF
-	
+
+	# выбираем только тех, кто не «съеден»
 	for i in range(all.size()):
 		var ch = all[i]
+		if not is_instance_valid(ch): continue
+		if _is_devoured(ch): continue
 		var time_to_full = (TURN_THRESHOLD - ch.turn_meter) / max(1.0, _eff_speed(ch))
 		if time_to_full < min_time:
 			min_time = time_to_full
 			best_idx = i
 
-	# Прокручиваем время на min_time: всем добавляем прогресс
-	for ch in all:
-		ch.turn_meter += _eff_speed(ch) * min_time
+	# если (патологично) не нашли — берём первого валидного
+	if best_idx == -1:
+		for i in range(all.size()):
+			if is_instance_valid(all[i]):
+				best_idx = i
+				min_time = (TURN_THRESHOLD - all[i].turn_meter) / max(1.0, _eff_speed(all[i]))
+				break
 
-	# Победитель пересёк порог — вычитаем порог (перенос переполнения)
+	# прокрутка времени всем
+	for ch in all:
+		if is_instance_valid(ch):
+			ch.turn_meter += _eff_speed(ch) * min_time
+
 	var actor = all[best_idx]
 	actor.turn_meter -= TURN_THRESHOLD
-
 	return actor
 
 func update_turn_queue_display():
@@ -2435,6 +2468,10 @@ func process_turn():
 	if _battle_over:
 		return
 	var ch: Node2D = _pick_next_actor()
+	if _is_action_blocked(ch):
+		print("[TURN] ", ch.nick, " не может ходить (гипноз/стан/съеден) — пропуск.")
+		end_turn()
+		return
 
 	# тикаем эффекты этого персонажа
 	if ch != null and ch.has_method("on_turn_start"):
@@ -2489,50 +2526,47 @@ func choose_enemy_action(enemy: Node2D) -> Variant:
 
 	var style := _ai_style_of(enemy)
 	var cats := _ai_split_abilities(enemy)
+
+	# — СНАЧАЛА спец-умения: если условия выполняются — выполняем сразу —
+	var special_pick = _ai_try_special(enemy)
+	if special_pick != null:
+		return special_pick
+
+	# — БАЗОВЫЕ ВЕСА —
 	var W := _ai_base_weights(style)
 
-	# — ситуативные поправки —
-	# 4.1 heal: если у кого-то мало HP — усиливаем
+	# ситуативные поправки
 	var ally_pool: Array[Node2D] = enemies
 	var low_ally := _ally_lowest_hp(ally_pool)
 	if low_ally != null:
 		var ratio = float(low_ally.health) / max(1, low_ally.max_health)
-		if ratio <= 0.40 and cats["heal"].size() > 0:
-			W["heal"] *= 2.0
-		elif ratio <= 0.65 and cats["heal"].size() > 0:
-			W["heal"] *= 1.4
+		if ratio <= 0.40 and cats["heal"].size() > 0: W["heal"] *= 2.0
+		elif ratio <= 0.65 and cats["heal"].size() > 0: W["heal"] *= 1.4
 
-	# 4.2 self-buff: нужен ли прямо сейчас?
 	if _ai_need_self_buff(enemy, cats["self_buff"]):
 		W["self_buff"] *= 1.6
 	else:
-		# если уже под баффом — снизим охоту снова баффаться
 		W["self_buff"] *= 0.35
 
-	# 4.3 «каденс» после баффа: пару ходов — больше атак
 	var lock := int(enemy.get_meta("ai_after_buff_attacks_left") if enemy.has_meta("ai_after_buff_attacks_left") else 0)
 	if lock > 0:
 		W["self_buff"] *= 0.1
 		enemy.set_meta("ai_after_buff_attacks_left", lock - 1)
 
-	# 4.4 коварный — больше single-атак и дебаффов, целимся в одного
+	# коварный — фокус на одной цели, больше дебаффов/солото-атак
 	if style == "cunning":
 		W["attack_single"] *= 1.5
 		W["debuff"] *= 1.4
 
-	# 4.5 поддержка — подбафать команду приятнее
 	if style == "support" and cats["ally_buff"].size() > 0:
 		W["ally_buff"] *= 1.4
 
-	# 4.6 если какой-то категории просто нет — обнуляем её вес
 	for key in W.keys():
 		if cats.has(key) and cats[key].size() == 0:
 			W[key] = 0.0
 
-	# Выбираем категорию по весам
 	var cat := _weighted_choice(W)
 	if cat == "":
-		# на всякий — любой доступный дамаг или вообще любое умение
 		if cats["attack_single"].size() > 0: cat = "attack_single"
 		elif cats["attack_aoe"].size() > 0: cat = "attack_aoe"
 		elif cats["debuff"].size() > 0: cat = "debuff"
@@ -2542,35 +2576,28 @@ func choose_enemy_action(enemy: Node2D) -> Variant:
 		else:
 			return null
 
-	var choice: Dictionary
-	# берём случайное умение внутри категории
-	var arr: Array = cats[cat]
-	choice = (arr[randi() % arr.size()]).duplicate(true)
+	var choice: Dictionary = (cats[cat][randi() % cats[cat].size()]).duplicate(true)
 
-	# таргетинг
+	# таргетинг без гипноза/частностей
 	match cat:
 		"heal":
-			# если single_ally — лечим самого слабого союзника
 			if String(choice.get("target","")) == "single_ally":
 				choice["target_instance"] = low_ally if low_ally != null else _random_alive(ally_pool)
 
 		"ally_buff":
 			if String(choice.get("target","")) == "single_ally":
-				# простая эвристика: бафф слабейшего по HP
 				var tgt := _ally_lowest_hp(ally_pool)
 				choice["target_instance"] = tgt if tgt != null else _random_alive(ally_pool)
 
 		"self_buff":
-			# пометим, что пару ходов будем «давать время» на атаки
 			enemy.set_meta("ai_after_buff_attacks_left", 2)
 
 		"debuff":
-			# если коварный — фокусим одну цель
 			var tgt_d: Node2D = null
 			if style == "cunning":
-					tgt_d = _ai_get_focus(enemy)
+				tgt_d = _ai_get_focus(enemy)
 			else:
-					tgt_d = _random_alive(heroes)
+				tgt_d = _random_alive(heroes)
 			if String(choice.get("target","")) == "single_enemy":
 				choice["target_instance"] = (tgt_d if tgt_d != null else _random_alive(heroes))
 
@@ -2579,7 +2606,6 @@ func choose_enemy_action(enemy: Node2D) -> Variant:
 			if style == "cunning":
 				tgt_a = _ai_get_focus(enemy)
 			if tgt_a == null:
-				# можно добивать самого «битого»
 				tgt_a = _ally_lowest_hp(heroes)
 			if tgt_a == null:
 				tgt_a = _random_alive(heroes)
@@ -2588,9 +2614,9 @@ func choose_enemy_action(enemy: Node2D) -> Variant:
 		"attack_aoe":
 			pass
 
-	# Отладка:
 	var tgt_dbg = choice.get("target_instance", null)
-	print("[AI] ", enemy.nick, " style=", style, " picked=", String(choice.get("name","<unnamed>")), " cat=", cat, " tgt=", (tgt_dbg.nick if tgt_dbg and is_instance_valid(tgt_dbg) else "(group/none)"))
+	print("[AI] ", enemy.nick, " style=", style, " picked=", String(choice.get("name","<unnamed>")),
+		" cat=", cat, " tgt=", (tgt_dbg.nick if tgt_dbg and is_instance_valid(tgt_dbg) else "(group/none)"))
 	return choice
 
 
@@ -2632,7 +2658,9 @@ func _enemy_perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dict
 			await _cam_push_focus(tgt.global_position, CINE_ZOOM)
 
 	# — подход / позиционирование —
-	var mover: Node2D = (user.get_node_or_null("MotionRoot") as Node2D) if user.get_node_or_null("MotionRoot") != null else user
+	var mover: Node2D = user.get_node_or_null("MotionRoot") as Node2D
+	if mover == null:
+		mover = user
 	var start_pos := mover.global_position
 	var move_mode := "none"
 	if typ == "physical":
@@ -2644,11 +2672,15 @@ func _enemy_perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dict
 	if move_mode == "single":
 		var hit_pos := _approach_point_for(user, targets[0])
 		_play_if_has(user.anim, "run")
-		await create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT).tween_property(mover, "global_position", hit_pos, 0.18).finished
+		var tw1 := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw1.tween_property(mover, "global_position", hit_pos, 0.18)
+		await tw1.finished
 	elif move_mode == "aoe":
 		var aoe_focus := _aoe_focus_point()
 		_play_if_has(user.anim, "run")
-		await create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT).tween_property(mover, "global_position", aoe_focus, 0.22).finished
+		var tw2 := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw2.tween_property(mover, "global_position", aoe_focus, 0.22)
+		await tw2.finished
 
 	# — QTE —
 	var qte = ability.get("qte", {})
@@ -2733,6 +2765,34 @@ func _enemy_perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dict
 	await _cam_pop()
 	_exit_cinematic()
 
+func _devour_take(eater: Node2D, victim: Node2D, skill: Dictionary) -> void:
+	if eater == null or victim == null: return
+	if _devour_map.has(eater): return
+	if _is_devoured(victim): return
+
+	victim.set_meta("devoured", true)
+	_devour_map[eater] = victim
+
+	# спрячем и «заморозим»
+	victim.visible = false
+	victim.process_mode = Node.PROCESS_MODE_DISABLED
+
+	# бафф сытости (если задан)
+	var self_effs: Array = skill.get("effects_to_self", [])
+	if self_effs.size() > 0:
+		_apply_effects(self_effs, eater)
+
+	print("[DEVOUR] ", eater.nick, " проглотил ", victim.nick)
+
+func _devour_release_by(eater: Node2D) -> void:
+	if not _devour_map.has(eater): return
+	var v: Node2D = _devour_map[eater]
+	_devour_map.erase(eater)
+	if v != null and is_instance_valid(v):
+		v.set_meta("devoured", false)
+		v.visible = true
+		v.process_mode = Node.PROCESS_MODE_INHERIT
+		print("[DEVOUR] ", v.nick, " освобождён (пожиратель пал)")
 
 func perform_action(user: Node2D, action: Dictionary) -> void:
 	if action == null or action.size() == 0:
@@ -2741,7 +2801,86 @@ func perform_action(user: Node2D, action: Dictionary) -> void:
 
 	var name_dbg := String(action.get("name","<безымянное>"))
 	var target_mode := String(action.get("target",""))
+	var special := String(action.get("special",""))
+	if special == "devour":
+		var victim: Node2D = action.get("target_instance", null)
+		if victim == null or not is_instance_valid(victim) or _is_devoured(victim):
+			victim = _ally_lowest_hp(heroes)
+		if victim == null:
+			return
 
+		# Условия (старый + новый формат)
+		var cond: Dictionary = action.get("conditions", {})
+		var thr := float(cond.get("target_hp_ratio_max", action.get("hp_threshold", 0.5)))
+		if bool(cond.get("self_not_devouring", true)) and _devour_map.has(user):
+			print("[DEVOUR] уже держу жертву — нельзя."); return
+		var absent = cond.get("self_effect_absent", null)
+		if typeof(absent) == TYPE_STRING and _has_effect(user, String(absent)):
+			print("[DEVOUR] на себе запрещающий бафф: ", String(absent)); return
+		elif typeof(absent) == TYPE_ARRAY:
+			for eid in absent:
+				if _has_effect(user, String(eid)): print("[DEVOUR] запрещающий бафф: ", String(eid)); return
+
+		var ratio = float(victim.health)/max(1.0, float(victim.max_health))
+		if ratio > thr:
+			print("[DEVOUR] цель слишком здорова: ratio=", ratio, " thr=", thr); return
+
+		# Подбег — как в _do_melee_single (без урона)
+		var mover: Node2D = user.get_node_or_null("MotionRoot") as Node2D
+		if mover == null:
+			mover = user
+		var start_pos := mover.global_position
+		var hit_pos := _approach_point_for(user, victim)
+		_play_if_has(user.anim, "run")
+		var tw_in := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw_in.tween_property(mover, "global_position", hit_pos, 0.18)
+		await tw_in.finished
+
+		# Клип «захвата»
+		var clip := "attack"
+		if user.anim != null:
+			if action.has("qte"):
+				var steps = action["qte"].get("steps", [])
+				if steps is Array and steps.size() > 0:
+					var st0 = steps[0]
+					if typeof(st0) == TYPE_DICTIONARY and user.anim.has_animation(String(st0.get("anim","attack"))):
+						clip = String(st0.get("anim","attack"))
+			elif user.anim.has_animation("skill"):
+				clip = "skill"
+		_play_if_has(user.anim, clip)
+
+		# Тайминг и защита цели (берём из qte.steps[0], если есть)
+		var dur := 0.6
+		var segs := [[0.45,0.55]]
+		if action.has("qte"):
+			var steps = action["qte"].get("steps", [])
+			if steps is Array and steps.size() > 0 and typeof(steps[0]) == TYPE_DICTIONARY:
+				dur = float(steps[0].get("duration", dur))
+				var sraw = steps[0].get("segments", segs)
+				segs = _segments_to_pairs(sraw)
+
+		var defres := await _defense_single(dur, segs, victim)
+		await _play_defense_reaction(victim, defres)
+
+		# Если защита «сбила» special — откат и конец
+		if _defense_cancels_special(defres):
+			await _wait_anim_end(user.anim, clip, 0.8)
+			var twb := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			twb.tween_property(mover, "global_position", start_pos, 0.18)
+			await twb.finished
+			_play_if_has(user.anim, "idle")
+			return
+
+		# Иначе — пожираем
+		await _wait_anim_end(user.anim, clip, 0.8)
+		_devour_take(user, victim, action)
+
+		# Возврат на позицию
+		var two := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		two.tween_property(mover, "global_position", start_pos, 0.18)
+		await two.finished
+		_play_if_has(user.anim, "idle")
+		return
 	# ───────── цели ─────────
 	var targets: Array[Node2D] = []
 
@@ -2929,6 +3068,126 @@ func _show_popup_number(target: Node2D, amount: int, kind: String = "dmg", is_cr
 	await tw.finished
 	if is_instance_valid(lab): lab.queue_free()
 
+func _ai_conditions_met(user: Node2D, target: Node2D, cond: Dictionary) -> bool:
+	if cond.is_empty():
+		return true
+
+	# 1) таргет под порогом HP
+	if cond.has("target_hp_ratio_max") and target != null and is_instance_valid(target):
+		var thr := float(cond.get("target_hp_ratio_max", 1.0))
+		var ratio = float(target.health) / max(1.0, float(target.max_health))
+		if ratio > thr:
+			return false
+
+	# 2) у «самого» нет конкретного баффа (id) — можно строку или массив строк
+	if cond.has("self_effect_absent") and user != null and is_instance_valid(user):
+		var need_absent = cond["self_effect_absent"]
+		if typeof(need_absent) == TYPE_STRING:
+			if _has_effect(user, String(need_absent)):
+				return false
+		elif typeof(need_absent) == TYPE_ARRAY:
+			for eid in need_absent:
+				if _has_effect(user, String(eid)):
+					return false
+
+	# 3) запрет, если уже держим «жертву» (универсально для пожирания)
+	if bool(cond.get("self_not_devouring", false)) and _devour_map.has(user):
+		return false
+
+	# 4) цель не «съедена»
+	if bool(cond.get("target_not_devoured", false)) and _is_devoured(target):
+		return false
+
+	return true
+
+
+func _ai_pick_target_for_special(user: Node2D, ability: Dictionary) -> Node2D:
+	var tmode := String(ability.get("target", ""))
+	var cond: Dictionary = ability.get("conditions", {})
+	if tmode == "self":
+		return user
+
+	if tmode == "single_ally":
+		var pool: Array = (enemies if String(user.team) == "enemy" else heroes)
+		return _ally_lowest_hp(pool)
+
+	if tmode == "single_enemy":
+		var pool: Array = (heroes if String(user.team) == "enemy" else enemies)
+		# если задан порог HP — выберем самого «битого» под порогом
+		if cond.has("target_hp_ratio_max"):
+			var thr := float(cond.get("target_hp_ratio_max", 1.0))
+			var best: Node2D = null
+			var best_ratio := 999.0
+			for h in pool:
+				if not is_instance_valid(h) or h.health <= 0 or _is_devoured(h): continue
+				var r = float(h.health) / max(1.0, float(h.max_health))
+				if r <= thr and r < best_ratio:
+					best_ratio = r; best = h
+			if best != null:
+				return best
+		# иначе — эвристика стиля: коварный держит фокус
+		var style := _ai_style_of(user)
+		if style == "cunning":
+			var f := _ai_get_focus(user)
+			if f != null and is_instance_valid(f) and f.health > 0 and not _is_devoured(f):
+				return f
+		# фолбэк — любой живой
+		return _random_alive(pool)
+
+
+	# групповые special обычно не нужны, но поддержим
+	if tmode == "all_enemies" or tmode == "all_allies":
+		return null  # целеуказание не требуется
+
+	return null
+
+func _defense_cancels_special(defres: Dictionary) -> bool:
+	var t := String(defres.get("type","none"))
+	var g := String(defres.get("grade","fail"))
+	if t == "dodge":
+		return g == "good" or g == "perfect"   # уклон отменяет
+	if t == "block":
+		return g == "perfect"                  # perfect-block отменяет
+	return false
+
+func _ai_try_special(enemy: Node2D) -> Variant:
+	if enemy == null or not is_instance_valid(enemy):
+		return null
+
+	var picked: Dictionary = {}
+	var best_priority := -9999
+
+	for a in enemy.abilities:
+		if typeof(a) != TYPE_DICTIONARY: continue
+		if not a.has("special"): continue
+
+		var special := String(a.get("special", ""))
+		var cond: Dictionary = a.get("conditions", {})
+
+		# devour: базовое правило — нельзя, если уже «держим»; цель под порогом
+		if special == "devour":
+			# совместимость со старым полем hp_threshold
+			if not cond.has("target_hp_ratio_max") and a.has("hp_threshold"):
+				cond["target_hp_ratio_max"] = float(a.get("hp_threshold", 0.5))
+			# если в JSON не указали явно — запретим пожирать, когда уже «живёт» жертва
+			if not cond.has("self_not_devouring"):
+				cond["self_not_devouring"] = true
+
+		var tgt := _ai_pick_target_for_special(enemy, a)
+		# если таргет не нужен (all_*), считаем, что проверка идёт по self
+		var ok := _ai_conditions_met(enemy, (tgt if tgt != null else enemy), cond)
+		if not ok:
+			continue
+
+		# можно ввести «priority» в JSON, чтобы управлять очередностью special
+		var prio := int(a.get("priority", 100))
+		if prio > best_priority:
+			best_priority = prio
+			picked = a.duplicate(true)
+			if tgt != null: picked["target_instance"] = tgt
+
+	return picked if picked.size() > 0 else null
+
 func _aoe_focus_point() -> Vector2:
 	var focus := _screen_center_world() + Vector2(AOE_CENTER_X_OFFSET, AOE_CENTER_Y_OFFSET)
 	var sumy := 0.0
@@ -2954,7 +3213,7 @@ func _aoe_cam_shift_world(attacker: Node2D) -> float:
 func _on_enemy_died(enemy: Node2D):
 	if not is_instance_valid(enemy):
 		return
-
+	_devour_release_by(enemy)
 	# 1) анимация смерти, если есть
 	if enemy.anim and enemy.anim.has_animation("die"):
 		enemy.anim.play("die")
