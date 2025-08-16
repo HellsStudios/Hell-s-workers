@@ -4,11 +4,12 @@
 	  "nick": "Clue",
 	  "sprite": "res://Assets/enemies/Clue.png",
 	  "team": "enemy",
-	  "max_health": 70,
+	  "ai_style": "aggresive",
+	  "max_health": 72,
 	  "attack": 8,
 	  "defense": 3,
 	  "speed": 7,
-	  "dodge_window": 0.10,
+	  "dodge_window": 0.07,
 	  "block_window": 0.16,
 	  "block_reduce": 0.50,
 	  "skills": [
@@ -39,6 +40,52 @@
 			"on_perfect": { "damage_mult": 1.2 },
 			"on_fail":    { "damage_mult": 0.8 }
 		  }
+		}
+	  ]
+	},
+
+	"Yezt": {
+	  "nick": "Yezt",
+	  "sprite": "res://Assets/enemies/Yezt.png",
+	  "team": "enemy",
+	  "ai_style": "coward",
+	  "max_health": 64,
+	  "attack": 7,
+	  "defense": 2,
+	  "speed": 9,
+	  "dodge_window": 0.07,
+	  "block_window": 0.16,
+	  "block_reduce": 0.50,
+	  "skills": [
+		{
+		  "name": "Беличья уловка",
+		  "type": "magic",
+		  "target": "self",
+		  "effects_to_self": [
+			{ "id": "squirrel_dodge", "name": "Сбитый прицел", "is_buff": true, "evade_chance": 0.20, "crit_taken_mult": 1.5,"duration": 2}
+		  ]
+		},
+		{
+		  "name": "Ореховая дробь",
+		  "type": "physical",
+		  "target": "single_enemy",
+		  "damage": 9,
+		  "qte": {
+			"steps": [
+			  { "anim": "attack", "duration": 0.60, "segments": [[0.42, 0.52]] }
+			],
+			"on_success": { "damage_mult": 1.0 },
+			"on_perfect": { "damage_mult": 1.25 },
+			"on_fail":    { "damage_mult": 0.85 }
+		  }
+		},
+		{
+		  "name": "Срыв темпа",
+		  "type": "magic",
+		  "target": "single_enemy",
+		  "effects_to_targets": [
+			{ "id": "slow", "name": "Замедление", "is_buff": false, "speed": -2, "duration": 2 }
+		  ]
 		}
 	  ]
 	}

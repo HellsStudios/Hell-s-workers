@@ -1847,10 +1847,10 @@ tracks/0/path = NodePath("Head:position")
 tracks/0/interp = 1
 tracks/0/loop_wrap = true
 tracks/0/keys = {
-"times": PackedFloat32Array(0, 0.25, 0.75, 1),
-"transitions": PackedFloat32Array(1, 1, 1, 1),
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
 "update": 0,
-"values": [Vector2(8, 8), Vector2(-14, 16), Vector2(-14, 16), Vector2(8, 8)]
+"values": [Vector2(8, 8), Vector2(-14, 16), Vector2(-54, 16), Vector2(-14, 16), Vector2(8, 8)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -1859,10 +1859,10 @@ tracks/1/path = NodePath("RightArm:position")
 tracks/1/interp = 1
 tracks/1/loop_wrap = true
 tracks/1/keys = {
-"times": PackedFloat32Array(0, 0.25, 0.75, 1),
-"transitions": PackedFloat32Array(1, 1, 1, 1),
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
 "update": 0,
-"values": [Vector2(-16, 16), Vector2(-16, -1), Vector2(-16, -1), Vector2(-16, 16)]
+"values": [Vector2(-16, 16), Vector2(-16, -1), Vector2(-56, -1), Vector2(-16, -1), Vector2(-16, 16)]
 }
 tracks/2/type = "value"
 tracks/2/imported = false
@@ -1871,10 +1871,10 @@ tracks/2/path = NodePath("RightLeg:position")
 tracks/2/interp = 1
 tracks/2/loop_wrap = true
 tracks/2/keys = {
-"times": PackedFloat32Array(0, 0.25, 0.75, 1),
-"transitions": PackedFloat32Array(1, 1, 1, 1),
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
 "update": 0,
-"values": [Vector2(-32, 136), Vector2(-4, 133), Vector2(-4, 133), Vector2(-32, 136)]
+"values": [Vector2(-32, 136), Vector2(-4, 133), Vector2(-44, 133), Vector2(-4, 133), Vector2(-32, 136)]
 }
 tracks/3/type = "value"
 tracks/3/imported = false
@@ -1883,10 +1883,10 @@ tracks/3/path = NodePath("Body:position")
 tracks/3/interp = 1
 tracks/3/loop_wrap = true
 tracks/3/keys = {
-"times": PackedFloat32Array(0, 0.25, 0.75, 1),
-"transitions": PackedFloat32Array(1, 1, 1, 1),
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
 "update": 0,
-"values": [Vector2(0, 0), Vector2(-25, 12), Vector2(-25, 12), Vector2(0, 0)]
+"values": [Vector2(0, 0), Vector2(-25, 12), Vector2(-65, 12), Vector2(-25, 12), Vector2(0, 0)]
 }
 tracks/4/type = "value"
 tracks/4/imported = false
@@ -1895,10 +1895,10 @@ tracks/4/path = NodePath("LeftLeg:position")
 tracks/4/interp = 1
 tracks/4/loop_wrap = true
 tracks/4/keys = {
-"times": PackedFloat32Array(0, 0.25, 0.75, 1),
-"transitions": PackedFloat32Array(1, 1, 1, 1),
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
 "update": 0,
-"values": [Vector2(8, 128), Vector2(37, 107), Vector2(37, 107), Vector2(8, 128)]
+"values": [Vector2(8, 128), Vector2(37, 107), Vector2(-3, 107), Vector2(37, 107), Vector2(8, 128)]
 }
 tracks/5/type = "value"
 tracks/5/imported = false
@@ -1907,10 +1907,10 @@ tracks/5/path = NodePath("LeftArm:position")
 tracks/5/interp = 1
 tracks/5/loop_wrap = true
 tracks/5/keys = {
-"times": PackedFloat32Array(0, 0.25, 0.75, 1),
-"transitions": PackedFloat32Array(1, 1, 1, 1),
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
 "update": 0,
-"values": [Vector2(0, 8), Vector2(0, 14), Vector2(0, 14), Vector2(0, 8)]
+"values": [Vector2(0, 8), Vector2(0, 14), Vector2(-40, 14), Vector2(0, 14), Vector2(0, 8)]
 }
 tracks/6/type = "value"
 tracks/6/imported = false
@@ -1919,10 +1919,10 @@ tracks/6/path = NodePath("Tail:position")
 tracks/6/interp = 1
 tracks/6/loop_wrap = true
 tracks/6/keys = {
-"times": PackedFloat32Array(0, 0.25, 0.75, 1),
-"transitions": PackedFloat32Array(1, 1, 1, 1),
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
 "update": 0,
-"values": [Vector2(-8, 48), Vector2(-8, 65), Vector2(-8, 65), Vector2(-8, 48)]
+"values": [Vector2(-8, 48), Vector2(-8, 65), Vector2(-48, 65), Vector2(-8, 65), Vector2(-8, 48)]
 }
 tracks/7/type = "value"
 tracks/7/imported = false

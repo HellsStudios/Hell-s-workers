@@ -55,23 +55,147 @@ var enemy_bars: Dictionary = {}  # enemy -> bar
 @export var HB_MAX_SCALE := 1.8
 @export var AOE_CAM_ZOOM := 1.12         # мягкий зум для AoE (меньше CINE_ZOOM)
 @export var AOE_CAM_SHIFT_PX := 180.0    # сдвиг камеры вправо в пикселях экрана
-@export var ENCOUNTER_ENEMIES: Array[String] = ["Clue","Clue","Clue"]
+@export var ENCOUNTER_ENEMIES: Array[String] = ["Yezt","Clue","Yezt"]
 
 # параметры защиты по умолчанию
-@export var DODGE_WINDOW_DEFAULT := 0.10
+@export var DODGE_WINDOW_DEFAULT := 0.01
 @export var BLOCK_WINDOW_DEFAULT := 0.16
 @export var BLOCK_REDUCE_DEFAULT := 0.50
 
 @onready var defense_qte := $UI/DefenseQTE  # узел с DefenseQTE.gd
 @export var MAGIC_SINGLE_ZOOM := 1.08
 @export var MAGIC_CAM_SHIFT_PX := -100.0
+
 signal battle_finished(result: String)
+
+@export var SUPPORT_CAM_SHIFT_PX := 180.0   # баффы: герои ← (влево), враги → (вправо)
 
 @export var EXIT_SCENE := ""      # если не пусто и ресурс существует — уйдём туда; иначе просто quit()
 var _battle_over := false
 
 var _cam_saved := { "pos": Vector2.ZERO, "zoom": Vector2.ONE, "proc": Node.PROCESS_MODE_INHERIT, "smooth": false }
 var _vp_saved_xform: Transform2D = Transform2D.IDENTITY
+
+func _ai_map_style(style_raw: String) -> String:
+	var s := style_raw.strip_edges().to_lower()
+	# RU → EN (внутренние коды)
+	if s.begins_with("aggressive"): return "aggressive"
+	if s.begins_with("support") or s.begins_with("суп"): return "support"
+	if s.begins_with("coward"): return "cowardly"
+	if s.begins_with("cunning"): return "cunning"
+	# на всякий — поддержим англ варианты
+	if s in ["aggressive","support","cowardly","cunning"]:
+		return s
+	return "aggressive"
+
+func _ai_style_of(enemy: Node2D) -> String:
+	# читаем из meta, если проставили при спавне (см. п.3)
+	var raw := "aggressive"
+	if enemy != null and enemy.has_meta("ai_style"):
+		raw = String(enemy.get_meta("ai_style"))
+	return _ai_map_style(raw)
+
+func _ai_base_weights(style: String) -> Dictionary:
+	# БАЗОВЫЕ веса категорий (потом модифицируем по ситуации)
+	match style:
+		"aggressive":
+			return {"attack_single": 40, "attack_aoe": 30, "debuff": 10, "ally_buff": 5, "self_buff": 10, "heal": 5}
+		"support":
+			return {"attack_single": 15, "attack_aoe": 10, "debuff": 10, "ally_buff": 30, "self_buff": 10, "heal": 25}
+		"cowardly":
+			return {"attack_single": 12, "attack_aoe": 8,  "debuff": 10, "ally_buff": 10, "self_buff": 45, "heal": 15}
+		"cunning":
+			return {"attack_single": 30, "attack_aoe": 10, "debuff": 30, "ally_buff": 10, "self_buff": 15, "heal": 5}
+		_:
+			return {"attack_single": 30, "attack_aoe": 20, "debuff": 15, "ally_buff": 10, "self_buff": 15, "heal": 10}
+
+func _ai_split_abilities(enemy: Node2D) -> Dictionary:
+	var out := {
+		"heal": [], "self_buff": [], "ally_buff": [],
+		"debuff": [], "attack_single": [], "attack_aoe": []
+	}
+	for a in enemy.abilities:
+		if typeof(a) != TYPE_DICTIONARY: continue
+		var tgt := String(a.get("target",""))
+		var has_dmg = a.has("damage")
+		var has_heal = a.has("heal")
+		var eff_self: Array = a.get("effects_to_self", [])
+		var eff_t: Array = a.get("effects_to_targets", [])
+
+		if has_heal:
+			out["heal"].append(a); continue
+
+		if eff_self.size() > 0 and tgt == "self":
+			out["self_buff"].append(a); continue
+
+		if eff_t.size() > 0 and (tgt == "single_ally" or tgt == "all_allies"):
+			out["ally_buff"].append(a)  # групповые/союзные баффы
+			# не continue — умение могло иметь урон, но обычно — нет
+
+		if eff_t.size() > 0 and (tgt == "single_enemy" or tgt == "all_enemies"):
+			out["debuff"].append(a)     # дебаффы на врагов
+
+		if has_dmg:
+			if tgt == "single_enemy": out["attack_single"].append(a)
+			elif tgt == "all_enemies": out["attack_aoe"].append(a)
+	return out
+
+func _weighted_choice(weights: Dictionary) -> String:
+	var total := 0.0
+	for k in weights.keys():
+		var w := float(weights[k]); if w < 0.0: w = 0.0
+		weights[k] = w
+		total += w
+	if total <= 0.0:
+		return ""  # пусть вызывающий решит fallback
+	var r := randf() * total
+	for k in weights.keys():
+		r -= float(weights[k])
+		if r <= 0.0:
+			return k
+	return weights.keys()[0]
+
+func _ally_lowest_hp(pool: Array[Node2D]) -> Node2D:
+	var best: Node2D = null
+	var best_ratio := 999.0
+	for a in pool:
+		if not is_instance_valid(a) or a.health <= 0: continue
+		var ratio = float(a.health) / max(1, a.max_health)
+		if ratio < best_ratio:
+			best_ratio = ratio
+			best = a
+	return best
+
+func _random_alive(pool: Array[Node2D]) -> Node2D:
+	var arr: Array[Node2D] = []
+	for a in pool:
+		if is_instance_valid(a) and a.health > 0:
+			arr.append(a)
+	if arr.is_empty(): return null
+	return arr[randi() % arr.size()]
+
+func _ai_need_self_buff(enemy: Node2D, self_buffs: Array) -> bool:
+	# если в баффе есть id и он уже висит — «не нужно»
+	for sb in self_buffs:
+		var list: Array = sb.get("effects_to_self", [])
+		for ex in list:
+			var eid := String(ex.get("id",""))
+			if eid != "" and enemy.has_method("has_effect") and enemy.call("has_effect", eid):
+				return false
+	# иначе — считаем, что нужно
+	return self_buffs.size() > 0
+
+func _ai_get_focus(enemy: Node2D) -> Node2D:
+	# хранит «жертву» для коварного стиля
+	if enemy.has_meta("ai_focus"):
+		var f: Node2D = enemy.get_meta("ai_focus")
+		if is_instance_valid(f) and f.health > 0:
+			return f
+	# выбираем нового — самый «битый» герой
+	var f2 := _ally_lowest_hp(heroes)
+	if f2 != null:
+		enemy.set_meta("ai_focus", f2)
+	return f2
 
 func _play_defense_reaction(target: Node2D, defres: Dictionary) -> void:
 	if target == null or not is_instance_valid(target):
@@ -487,6 +611,11 @@ func _perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dictionary
 	var is_aoe := s_target == "all_enemies"
 	var typ := String(ability.get("type", ""))
 	var need_move := typ == "physical"
+	var has_damage := ability.has("damage")
+	var has_heal := ability.has("heal")
+	var has_eff_t := ability.has("effects_to_targets")
+	var has_eff_s := ability.has("effects_to_self")
+	var is_support := (has_heal or has_eff_t or has_eff_s) and not has_damage
 
 	# --- центр AoE как в _do_melee_aoe ---
 	var aoe_focus := _screen_center_world() + Vector2(AOE_CENTER_X_OFFSET, AOE_CENTER_Y_OFFSET)
@@ -502,30 +631,59 @@ func _perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dictionary
 
 	# --- камера перед действием ---
 	if is_aoe:
-		var aoe_cam_focus := aoe_focus
-
+		var cam_focus := aoe_focus
 		var side_px := AOE_CAM_SHIFT_PX
 		if typ == "magic":
 			side_px = MAGIC_CAM_SHIFT_PX
+		if is_support:
+			side_px = SUPPORT_CAM_SHIFT_PX
+
+		# знак: обычные атаки — герои вправо, враги влево;
+		# баффы — герои влево, враги вправо
 		if user != null and user.team == "enemy":
-			side_px = -side_px
+			if is_support:
+				side_px = +abs(side_px)   # враг — вправо
+			else:
+				side_px = -abs(side_px)   # враг — влево
+		else:
+			if is_support:
+				side_px = -abs(side_px)   # герой — влево
+			else:
+				side_px = +abs(side_px)   # герой — вправо
 
 		var tag := "PLAYER_AOE"
-		if typ == "magic":
-			tag = "PLAYER_AOE_MAGIC"
-
-		await _push_focus_with_screen_shift(aoe_cam_focus, AOE_CAM_ZOOM, side_px, tag)
+		if typ == "magic": tag = "PLAYER_AOE_MAGIC"
+		if is_support: tag = "PLAYER_AOE_SUPPORT"
+		await _push_focus_with_screen_shift(cam_focus, AOE_CAM_ZOOM, side_px, tag)
 	else:
 		var main_tgt: Node2D = targets[0]
-		var is_magic := typ == "magic"
-		if is_magic:
-			var mid := (user.global_position + main_tgt.global_position) * 0.5
-			var side_px2 := MAGIC_CAM_SHIFT_PX
-			if user != null and user.team == "enemy":
-				side_px2 = -side_px2
-			await _push_focus_with_screen_shift(mid, MAGIC_SINGLE_ZOOM, side_px2, "PLAYER_SINGLE_MAGIC")
+		# точка фокуса: для self — сам кастер; для single_ally — середина между кастером и целью; иначе как было
+		var focus_point := main_tgt.global_position
+		if is_support:
+			if String(s_target) == "self":
+				focus_point = user.global_position
+			else:
+				focus_point = (user.global_position + main_tgt.global_position) * 0.5
+
+		var side_px2 := MAGIC_CAM_SHIFT_PX
+		if is_support:
+			side_px2 = SUPPORT_CAM_SHIFT_PX
+
+		if user != null and user.team == "enemy":
+			if is_support:
+				side_px2 = +abs(side_px2)   # враг — вправо
+			else:
+				side_px2 = -abs(side_px2)   # враг — влево
 		else:
-			await _cam_push_focus(main_tgt.global_position, CINE_ZOOM)
+			if is_support:
+				side_px2 = -abs(side_px2)   # герой — влево
+			else:
+				side_px2 = +abs(side_px2)   # герой — вправо
+
+		var tag2 := "PLAYER_SINGLE"
+		if typ == "magic": tag2 = "PLAYER_SINGLE_MAGIC"
+		if is_support: tag2 = "PLAYER_SUPPORT"
+		await _push_focus_with_screen_shift(focus_point, MAGIC_SINGLE_ZOOM, side_px2, tag2)
 
 	_enter_cinematic(user, targets)
 	_update_enemy_bars_positions()
@@ -606,15 +764,30 @@ func _perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dictionary
 			var dmg := int(round(dmg_base * mult))
 
 			var effs: Array = ability.get("effects_to_targets", [])
-			if mod.has("duration_bonus") and effs.size() > 0:
-				var bonus := int(mod.get("duration_bonus"))
-				if bonus != 0:
-					var patched: Array = []
-					for e in effs:
-						var d = e.duplicate(true)
-						d["duration"] = int(d.get("duration", 0)) + bonus
-						patched.append(d)
-					effs = patched
+			var heal_base := int(ability.get("heal", 0))
+			var heal_mult := 1.0
+			if mod.has("heal_mult"):
+				heal_mult = float(mod.get("heal_mult"))
+
+			# если есть эффекты, увеличим длительность
+			var effs_self: Array = ability.get("effects_to_self", [])
+			if mod.has("duration_bonus") and (effs.size() > 0 or effs_self.size() > 0):
+				var bonus2 := int(mod.get("duration_bonus"))
+				if bonus2 != 0:
+					if effs.size() > 0:
+						var patched2: Array = []
+						for e2 in effs:
+							var d2 = e2.duplicate(true)
+							d2["duration"] = int(d2.get("duration", 0)) + bonus2
+							patched2.append(d2)
+						effs = patched2
+					if effs_self.size() > 0:
+						var patched_self: Array = []
+						for e3 in effs_self:
+							var d3 = e3.duplicate(true)
+							d3["duration"] = int(d3.get("duration", 0)) + bonus2
+							patched_self.append(d3)
+						effs_self = patched_self
 
 			# выбор целей этой ступени (random_enemies / all_enemies)
 			var real_targets := targets
@@ -640,7 +813,39 @@ func _perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dictionary
 
 			for t in real_targets:
 				if is_instance_valid(t) and t.health > 0:
-					_apply_melee_hit(t, dmg, {"done": false}, effs, user)
+					if has_damage:
+						var final := dmg
+						var is_crit := false
+
+						# шанс на крит из способности (если задан)
+						var crit_ch := float(ability.get("crit", 0.0))
+						# модификаторы цели (эвейд/крит-уязвимость)
+						var mods := _query_incoming_mods(t)
+						var evade := float(mods.get("evade", 0.0))
+						var crit_mul := float(mods.get("crit_mult", 1.0))
+
+						# эвейд
+						if randf() < evade:
+							_show_popup_number(t, 0, "miss", false)
+						else:
+							# крит
+							if crit_ch > 0.0 and randf() < crit_ch:
+								is_crit = true
+								final = int(round(final * 1.5 * crit_mul))
+							if final > 0:
+								_apply_melee_hit(t, final, {"done": false}, effs, user, is_crit)
+					else:
+						# support: heal + эффекты-на-цель
+						if heal_base > 0:
+							var heal_amt := int(round(heal_base * heal_mult))
+							t.health = min(t.max_health, max(0, t.health + heal_amt))
+							_show_popup_number(t, heal_amt, "heal")
+						if effs.size() > 0:
+							_apply_effects(effs, t)
+
+			# эффекты на себя
+			if effs_self.size() > 0:
+				_apply_effects(effs_self, user)
 
 			await _wait_anim_end(user.anim, clip, 0.8)
 
@@ -1069,15 +1274,15 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 					end_turn()
 				, "all")
 			elif s_target == "self":
-				var can := _can_pay_cost(actor, skill)
-				if not can:
-					show_player_options(actor)
-					return
+				if not _can_pay_cost(actor, skill):
+					show_player_options(actor); return
 				_pay_cost(actor, skill)
-
-				_is_acting = true
-				await _do_support(actor, actor, skill)
-				_is_acting = false
+				if skill.has("qte"):
+					await _perform_with_qte(actor, [actor], skill)
+				else:
+					_is_acting = true
+					await _do_support(actor, actor, skill)
+					_is_acting = false
 				end_turn()
 
 			elif s_target == "single_ally":
@@ -1130,46 +1335,34 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 					return
 				_pay_cost(actor, skill)
 
-				# ОДНОКРАТНО проиграем анимацию у кастера,
-				# применим эффект всем союзникам внутри этой анимации,
-				# дождёмся конца клипа и вернём idle.
-				_is_acting = true
-
-				var ap = actor.anim
-				var clip := "idle"
-				if ap != null:
-					if ap.has_animation("cast"):
-						clip = "cast"
-					elif ap.has_animation("skill"):
-						clip = "skill"
-				_play_if_has(ap, clip)
-
-				var clip_len := 0.5
-				if ap != null and ap.has_animation(clip):
-					clip_len = ap.get_animation(clip).length
-				var apply_delay := 0.30 * clip_len
-				if apply_delay < 0.06:
-					apply_delay = 0.06
-				if apply_delay > 0.60:
-					apply_delay = 0.60
-
-				await get_tree().create_timer(apply_delay).timeout
-
-				# лечение/баффы/дебаффы — на всех
-				if skill.has("heal"):
-					var heal := int(skill.get("heal", 0))
-					for ally in group:
-						ally.health = min(ally.max_health, max(0, ally.health + heal))
-
-				var effs: Array = skill.get("effects_to_targets", [])
-				if effs.size() > 0:
-					for ally in group:
-						_apply_effects(effs, ally)
-
-				await _wait_anim_end(ap, clip, 1.2)
-				_play_if_has(ap, "idle")
-
-				_is_acting = false
+				if skill.has("qte"):
+					await _perform_with_qte(actor, group, skill)  # ← теперь баффы союзников тоже через QTE
+				else:
+					# старый «без QTE» путь — оставить как запасной
+					_is_acting = true
+					var ap = actor.anim
+					var clip := "cast"
+					if ap != null:
+						if ap.has_animation("cast"):
+							clip = "cast"
+						elif ap.has_animation("skill"):
+							clip = "skill"
+					_play_if_has(ap, clip)
+					var clip_len := 0.5
+					if ap != null and ap.has_animation(clip):
+						clip_len = ap.get_animation(clip).length
+					var apply_delay = clamp(0.30 * clip_len, 0.06, 0.60)
+					await get_tree().create_timer(apply_delay).timeout
+					if skill.has("heal"):
+						var heal := int(skill.get("heal", 0))
+						for ally in group:
+							ally.health = min(ally.max_health, max(0, ally.health + heal))
+					var effs: Array = skill.get("effects_to_targets", [])
+					if effs.size() > 0:
+						for ally in group: _apply_effects(effs, ally)
+					await _wait_anim_end(ap, clip, 1.2)
+					_play_if_has(ap, "idle")
+					_is_acting = false
 				end_turn()
 
 		"item":
@@ -1334,14 +1527,24 @@ func _defense_single(duration: float, segments: Array, target: Node2D) -> Dictio
 		return {"type":"none","grade":"fail"}
 	var dodge_w := DODGE_WINDOW_DEFAULT
 	var block_w := BLOCK_WINDOW_DEFAULT
-	# в будущем можно читать окна из статов target
+	# читаем окна именно у защитника (героя), если заданы
+	if target != null and is_instance_valid(target):
+		if target.has_method("get_defense_windows"):
+			var w = target.call("get_defense_windows")
+			if typeof(w) == TYPE_DICTIONARY:
+				if w.has("dodge"): dodge_w = float(w["dodge"])
+				if w.has("block"): block_w = float(w["block"])
+		else:
+			if target.has_meta("dodge_window"): dodge_w = float(target.get_meta("dodge_window"))
+			if target.has_meta("block_window"): block_w = float(target.get_meta("block_window"))
 	defense_qte.call("start", duration, segments, dodge_w, block_w, "single")
 	var res: Dictionary = await defense_qte.finished
-	return res  # {type, grade}
+	return res
 
 func _defense_aoe(duration: float, segments: Array) -> Dictionary:
 	if defense_qte == null:
 		return {"type":"none","grade":"fail"}
+	# групповая защита — общее окно по умолчанию
 	defense_qte.call("start", duration, segments, DODGE_WINDOW_DEFAULT, BLOCK_WINDOW_DEFAULT, "aoe")
 	var res: Dictionary = await defense_qte.finished
 	return res
@@ -1391,6 +1594,7 @@ func spawn_enemies() -> void:
 				foe.defense = int(def.get("defense", 3))
 				foe.speed = int(def.get("speed", 7))
 				foe.abilities = def.get("abilities", [])
+				foe.set_meta("ai_style", String(def.get("ai_style", "агрессивный")))
 		else:
 			# совсем фолбэк, если БД не нашлась
 			foe.team = "enemy"
@@ -1604,6 +1808,14 @@ func _on_magic_aoe_hit(user: Node2D, damage: int, effects_to_targets: Array, gat
 	gated["done"] = true
 	_apply_aoe_once(user, damage, effects_to_targets)
 
+func _on_pick_pressed(btn: Button) -> void:
+	if not _pick_mode: return
+	if not _pick_map.has(btn): return
+	var target: Node2D = _pick_map[btn]
+	# На всякий — завершаем режим выбора и возвращаем панель действий
+	_leave_pick_mode(true)
+	print("[PICK] выбран таргет: ", (target.nick if target and is_instance_valid(target) else "<null>"))
+
 func _do_support(user: Node2D, target: Node2D, ability: Dictionary) -> void:
 	if user == null:
 		return
@@ -1637,10 +1849,12 @@ func _do_support(user: Node2D, target: Node2D, ability: Dictionary) -> void:
 	# Лечение
 	if ability.has("heal"):
 		var heal := int(ability.get("heal", 0))
-		var new_hp = target.health + heal
-		if new_hp > target.max_health: new_hp = target.max_health
-		if new_hp < 0: new_hp = 0
+		var old_hp = target.health
+		var new_hp = clamp(old_hp + heal, 0, target.max_health)
 		target.health = new_hp
+		var delta = new_hp - old_hp
+		if delta > 0:
+			_show_popup_number(target, delta, "heal")
 
 	# Эффекты
 	var effs_to_target: Array = ability.get("effects_to_targets", [])
@@ -1654,14 +1868,18 @@ func _do_support(user: Node2D, target: Node2D, ability: Dictionary) -> void:
 	await _wait_anim_end(user.anim, clip, 1.2)
 	_play_if_has(user.anim, "idle")
 
-func _apply_melee_hit(target: Node2D, damage: int, gate: Dictionary, effects_to_targets: Array = [], source: Node2D = null) -> void:
+func _apply_melee_hit(target: Node2D, damage: int, gate: Dictionary, effects_to_targets: Array = [], source: Node2D = null, is_crit := false) -> void:
 	if gate.get("done", false): return
 	gate["done"] = true
 	if not is_instance_valid(target): return
 
+	# попап: сначала показать, потом применить
+	if damage > 0:
+		_show_popup_number(target, damage, ("crit" if is_crit else "dmg"), is_crit)
+
 	target.health = max(0, target.health - damage)
 
-	# эффекты на цель — из способности
+	# эффекты на цель
 	if effects_to_targets.size() > 0:
 		_apply_effects(effects_to_targets, target)
 
@@ -2093,77 +2311,141 @@ func enemy_action(enemy: Node2D) -> void:
 	end_turn()
 	
 func choose_enemy_action(enemy: Node2D) -> Variant:
-	# 1) если есть лечение и кто-то ранен — лечим
-	var heal_ability: Dictionary = {}
-	for ability in enemy.abilities:
-		if ability.get("name", "") == "Исцеление":
-			heal_ability = ability
-			break
+	if enemy == null or not is_instance_valid(enemy):
+		return null
 
-	if heal_ability.size() > 0:
-		var lowest_hp_target: Node2D = null
-		for ally in enemies:
-			if ally.health < ally.max_health:
-				if lowest_hp_target == null:
-					lowest_hp_target = ally
-				else:
-					var cur_ratio = float(ally.health) / max(1, ally.max_health)
-					var best_ratio = float(lowest_hp_target.health) / max(1, lowest_hp_target.max_health)
-					if cur_ratio < best_ratio:
-						lowest_hp_target = ally
-		if lowest_hp_target != null and lowest_hp_target.health < lowest_hp_target.max_health * 0.5:
-			heal_ability["target_instance"] = lowest_hp_target
-			print("[AI] ", enemy.nick, " выбрал: ", heal_ability.get("name","<безымянное>"), " → цель: ", lowest_hp_target.nick)
-			return heal_ability
+	var style := _ai_style_of(enemy)
+	var cats := _ai_split_abilities(enemy)
+	var W := _ai_base_weights(style)
 
-	# 2) иначе — любая атакующая способность
-	var attack_skills: Array = enemy.abilities.filter(func(a): return a.get("damage") != null)
-	if attack_skills.size() > 0:
-		var choice: Dictionary = attack_skills[randi() % attack_skills.size()]
-		if String(choice.get("target","")) == "single_enemy" and heroes.size() > 0:
-			choice["target_instance"] = heroes[randi() % heroes.size()]
-		var tgt_dbg = choice.get("target_instance", null)
-		if tgt_dbg != null and is_instance_valid(tgt_dbg):
-			print("[AI] ", enemy.nick, " выбрал: ", choice.get("name","<безымянное>"),
-				" (target=", String(choice.get("target","?")), ") → цель: ", tgt_dbg.nick)
+	# — ситуативные поправки —
+	# 4.1 heal: если у кого-то мало HP — усиливаем
+	var ally_pool: Array[Node2D] = enemies
+	var low_ally := _ally_lowest_hp(ally_pool)
+	if low_ally != null:
+		var ratio = float(low_ally.health) / max(1, low_ally.max_health)
+		if ratio <= 0.40 and cats["heal"].size() > 0:
+			W["heal"] *= 2.0
+		elif ratio <= 0.65 and cats["heal"].size() > 0:
+			W["heal"] *= 1.4
+
+	# 4.2 self-buff: нужен ли прямо сейчас?
+	if _ai_need_self_buff(enemy, cats["self_buff"]):
+		W["self_buff"] *= 1.6
+	else:
+		# если уже под баффом — снизим охоту снова баффаться
+		W["self_buff"] *= 0.35
+
+	# 4.3 «каденс» после баффа: пару ходов — больше атак
+	var lock := int(enemy.get_meta("ai_after_buff_attacks_left") if enemy.has_meta("ai_after_buff_attacks_left") else 0)
+	if lock > 0:
+		W["self_buff"] *= 0.1
+		enemy.set_meta("ai_after_buff_attacks_left", lock - 1)
+
+	# 4.4 коварный — больше single-атак и дебаффов, целимся в одного
+	if style == "cunning":
+		W["attack_single"] *= 1.5
+		W["debuff"] *= 1.4
+
+	# 4.5 поддержка — подбафать команду приятнее
+	if style == "support" and cats["ally_buff"].size() > 0:
+		W["ally_buff"] *= 1.4
+
+	# 4.6 если какой-то категории просто нет — обнуляем её вес
+	for key in W.keys():
+		if cats.has(key) and cats[key].size() == 0:
+			W[key] = 0.0
+
+	# Выбираем категорию по весам
+	var cat := _weighted_choice(W)
+	if cat == "":
+		# на всякий — любой доступный дамаг или вообще любое умение
+		if cats["attack_single"].size() > 0: cat = "attack_single"
+		elif cats["attack_aoe"].size() > 0: cat = "attack_aoe"
+		elif cats["debuff"].size() > 0: cat = "debuff"
+		elif cats["self_buff"].size() > 0: cat = "self_buff"
+		elif cats["ally_buff"].size() > 0: cat = "ally_buff"
+		elif cats["heal"].size() > 0: cat = "heal"
 		else:
-			print("[AI] ", enemy.nick, " выбрал: ", choice.get("name","<безымянное>"),
-				" (target=", String(choice.get("target","?")), ") без конкретной цели")
-		return choice
+			return null
 
-	# 3) ничего подходящего — пропускаем
-	print("[AI] ", enemy.nick, " не нашёл действия — пропуск")
-	return null
+	var choice: Dictionary
+	# берём случайное умение внутри категории
+	var arr: Array = cats[cat]
+	choice = (arr[randi() % arr.size()]).duplicate(true)
+
+	# таргетинг
+	match cat:
+		"heal":
+			# если single_ally — лечим самого слабого союзника
+			if String(choice.get("target","")) == "single_ally":
+				choice["target_instance"] = low_ally if low_ally != null else _random_alive(ally_pool)
+
+		"ally_buff":
+			if String(choice.get("target","")) == "single_ally":
+				# простая эвристика: бафф слабейшего по HP
+				var tgt := _ally_lowest_hp(ally_pool)
+				choice["target_instance"] = tgt if tgt != null else _random_alive(ally_pool)
+
+		"self_buff":
+			# пометим, что пару ходов будем «давать время» на атаки
+			enemy.set_meta("ai_after_buff_attacks_left", 2)
+
+		"debuff":
+			# если коварный — фокусим одну цель
+			var tgt_d: Node2D = null
+			if style == "cunning":
+					tgt_d = _ai_get_focus(enemy)
+			else:
+					tgt_d = _random_alive(heroes)
+			if String(choice.get("target","")) == "single_enemy":
+				choice["target_instance"] = (tgt_d if tgt_d != null else _random_alive(heroes))
+
+		"attack_single":
+			var tgt_a: Node2D = null
+			if style == "cunning":
+				tgt_a = _ai_get_focus(enemy)
+			if tgt_a == null:
+				# можно добивать самого «битого»
+				tgt_a = _ally_lowest_hp(heroes)
+			if tgt_a == null:
+				tgt_a = _random_alive(heroes)
+			choice["target_instance"] = tgt_a
+
+		"attack_aoe":
+			pass
+
+	# Отладка:
+	var tgt_dbg = choice.get("target_instance", null)
+	print("[AI] ", enemy.nick, " style=", style, " picked=", String(choice.get("name","<unnamed>")), " cat=", cat, " tgt=", (tgt_dbg.nick if tgt_dbg and is_instance_valid(tgt_dbg) else "(group/none)"))
+	return choice
+
 
 func _enemy_perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dictionary) -> void:
-	if user == null or not is_instance_valid(user):
-		print("[QTE] user invalid")
-		return
-	if targets.size() == 0:
-		print("[QTE] targets empty")
-		return
+	if user == null or not is_instance_valid(user): return
+	if targets.is_empty(): return
 
 	var s_target := String(ability.get("target",""))
 	var is_aoe := s_target == "all_enemies"
 	var typ := String(ability.get("type",""))
-	print("[QTE] start: ", user.nick, " → ", ability.get("name","<безымянное>"), " (", s_target, ", ", typ, ")")
+	var dmg_base := int(ability.get("damage", user.attack))
+	var effs: Array = ability.get("effects_to_targets", [])
+	var crit_ch := float(ability.get("crit", 0.0))
 
+	# — камера/вступление —
 	_enter_cinematic(user, targets)
 	_update_enemy_bars_positions()
-
 	if is_aoe:
 		var focus := _aoe_focus_point()
-
 		var side := AOE_CAM_SHIFT_PX
 		if typ == "magic":
 			side = MAGIC_CAM_SHIFT_PX
 		if user != null and user.team == "enemy":
 			side = -side
-
+		if user.team == "enemy": side = -abs(side)
 		var tag := "ENEMY_AOE"
 		if typ == "magic":
 			tag = "ENEMY_AOE_MAGIC"
-
 		await _push_focus_with_screen_shift(focus, AOE_CAM_ZOOM, side, tag)
 	else:
 		var tgt: Node2D = targets[0]
@@ -2176,97 +2458,107 @@ func _enemy_perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dict
 		else:
 			await _cam_push_focus(tgt.global_position, CINE_ZOOM)
 
-	var mover: Node2D = user.get_node_or_null("MotionRoot") as Node2D
-	if mover == null:
-		mover = user
+	# — подход / позиционирование —
+	var mover: Node2D = (user.get_node_or_null("MotionRoot") as Node2D) if user.get_node_or_null("MotionRoot") != null else user
 	var start_pos := mover.global_position
-
 	var move_mode := "none"
 	if typ == "physical":
 		if is_aoe:
 			move_mode = "aoe"
 		elif targets.size() == 1:
 			move_mode = "single"
-	print("[QTE] move_mode=", move_mode)
 
 	if move_mode == "single":
 		var hit_pos := _approach_point_for(user, targets[0])
-		print("[QTE] move to single: ", hit_pos)
 		_play_if_has(user.anim, "run")
-		var tw_in := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-		tw_in.tween_property(mover, "global_position", hit_pos, 0.18)
-		await tw_in.finished
+		await create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT).tween_property(mover, "global_position", hit_pos, 0.18).finished
 	elif move_mode == "aoe":
 		var aoe_focus := _aoe_focus_point()
-		print("[QTE] move to aoe: ", aoe_focus)
 		_play_if_has(user.anim, "run")
-		var tw_in2 := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-		tw_in2.tween_property(mover, "global_position", aoe_focus, 0.22)
-		await tw_in2.finished
+		await create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT).tween_property(mover, "global_position", aoe_focus, 0.22).finished
 
+	# — QTE —
 	var qte = ability.get("qte", {})
 	var steps: Array = qte.get("steps", [])
-	var dmg_base := int(ability.get("damage", user.attack))
-	print("[QTE] steps=", steps.size(), " base_dmg=", dmg_base)
-
-	for i in range(steps.size()):
-		var step = steps[i]
-		var clip := "attack"
-		if user.anim != null:
-			if step.has("anim") and user.anim.has_animation(String(step["anim"])):
-				clip = String(step["anim"])
-			else:
-				if typ == "magic" and user.anim.has_animation("cast"):
-					clip = "cast"
-				elif user.anim.has_animation("skill"):
-					clip = "skill"
-		_play_if_has(user.anim, clip)
-
-		var dur := float(step.get("duration", 1.0))
-		var segs_raw = step.get("segments", [])
-		var segs := _segments_to_pairs(segs_raw)
-		if segs.size() == 0:
-			segs = [[0.45, 0.55]]
-		print("[QTE] step ", i, " clip=", clip, " dur=", dur, " segs=", segs)
-
+	if steps.is_empty():
+		# без QTE — однократный хит по целям
 		if is_aoe:
-			var defres := await _defense_aoe(dur, segs)
-
-			# синхронная (параллельная) реакция всех целей, чуть быстрее
-			await _play_defense_reaction_parallel(targets, defres)
-
-			var mult := 1.0
-			if String(defres.get("type","none")) == "dodge":
-				var grade := String(defres.get("grade","fail"))
-				if grade == "good" or grade == "perfect":
-					mult = 0.0
-
 			for t in targets:
 				if is_instance_valid(t) and t.health > 0:
-					var dmgi := int(round(dmg_base * mult))
-					if dmgi > 0:
-						_apply_melee_hit(t, dmgi, {"done": false}, ability.get("effects_to_targets", []), user)
+					var dmgi := dmg_base
+					# крит врага (если задан)
+					if dmgi > 0 and crit_ch > 0.0 and randf() < crit_ch:
+						dmgi = int(round(dmgi * 1.5))
+						_apply_melee_hit(t, dmgi, {"done": false}, effs, user, true)
+					elif dmgi > 0:
+						_apply_melee_hit(t, dmgi, {"done": false}, effs, user, false)
 		else:
 			var tgt: Node2D = targets[0]
 			if is_instance_valid(tgt) and tgt.health > 0:
-				var defres2 := await _defense_single(dur, segs, tgt)
+				var dmgi2 := dmg_base
+				# одиночная цель может защищаться QTE игрока
+				var defres2 := await _defense_single(0.6, [[0.45,0.55]], tgt)
 				await _play_defense_reaction(tgt, defres2)
-				var dmgi2 := _apply_damage_with_defense(dmg_base, defres2)
-				print("[QTE] SINGLE defense=", defres2, " final_dmg=", dmgi2)
+				dmgi2 = _apply_damage_with_defense(dmgi2, defres2)
 				if dmgi2 > 0:
-					_apply_melee_hit(tgt, dmgi2, {"done": false}, ability.get("effects_to_targets", []), user)
+					var is_crit := crit_ch > 0.0 and randf() < crit_ch
+					if is_crit: dmgi2 = int(round(dmgi2 * 1.5))
+					_apply_melee_hit(tgt, dmgi2, {"done": false}, effs, user, is_crit)
+	else:
+		# пошаговый QTE
+		for step in steps:
+			var clip := "attack"
+			if user.anim != null:
+				if step.has("anim") and user.anim.has_animation(String(step["anim"])):
+					clip = String(step["anim"])
+				elif typ == "magic" and user.anim.has_animation("cast"):
+					clip = "cast"
+				elif user.anim.has_animation("skill"):
+					clip = "skill"
+			_play_if_has(user.anim, clip)
 
-		await _wait_anim_end(user.anim, clip, 0.8)
+			var dur := float(step.get("duration", 1.0))
+			var segs := _segments_to_pairs(step.get("segments", []))
+			if segs.is_empty(): segs = [[0.45,0.55]]
 
+			if is_aoe:
+				# общий результат защиты (групповой)
+				var defres := await _defense_aoe(dur, segs)
+				await _play_defense_reaction_parallel(targets, defres)
+
+				var mult := 1.0
+				if String(defres.get("type","none")) == "dodge":
+					var grade := String(defres.get("grade","fail"))
+					if grade == "good" or grade == "perfect":
+						mult = 0.0
+
+				for t in targets:
+					if is_instance_valid(t) and t.health > 0:
+						var dmgi := int(round(dmg_base * mult))
+						if dmgi > 0:
+							var is_crit := crit_ch > 0.0 and randf() < crit_ch
+							if is_crit: dmgi = int(round(dmgi * 1.5))
+							_apply_melee_hit(t, dmgi, {"done": false}, effs, user, is_crit)
+			else:
+				var tgt: Node2D = targets[0]
+				if is_instance_valid(tgt) and tgt.health > 0:
+					var defres2 := await _defense_single(dur, segs, tgt)
+					await _play_defense_reaction(tgt, defres2)
+					var dmgi2 := _apply_damage_with_defense(dmg_base, defres2)
+					if dmgi2 > 0:
+						var is_crit := crit_ch > 0.0 and randf() < crit_ch
+						if is_crit: dmgi2 = int(round(dmgi2 * 1.5))
+						_apply_melee_hit(tgt, dmgi2, {"done": false}, effs, user, is_crit)
+
+			await _wait_anim_end(user.anim, clip, 0.8)
+
+	# — откат/выход из «кино» —
 	if move_mode != "none":
-		var tw_out := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		tw_out.tween_property(mover, "global_position", start_pos, 0.22)
-		await tw_out.finished
+		await create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT).tween_property(mover, "global_position", start_pos, 0.22).finished
 	_play_if_has(user.anim, "idle")
 	_update_enemy_bars_positions()
 	await _cam_pop()
 	_exit_cinematic()
-	print("[QTE] done for ", user.nick)
 
 
 func perform_action(user: Node2D, action: Dictionary) -> void:
@@ -2277,16 +2569,11 @@ func perform_action(user: Node2D, action: Dictionary) -> void:
 	var name_dbg := String(action.get("name","<безымянное>"))
 	var target_mode := String(action.get("target",""))
 
-	# ВАЖНО: типизированный массив целей
+	# ───────── цели ─────────
 	var targets: Array[Node2D] = []
 
-	# --- формируем цели без тернарников ---
 	if target_mode == "all_enemies":
-		var pool_all: Array[Node2D] = []
-		if String(user.team) == "hero":
-			pool_all = enemies
-		else:
-			pool_all = heroes
+		var pool_all: Array[Node2D] = (heroes if String(user.team) == "enemy" else enemies)
 		for n in pool_all:
 			if is_instance_valid(n) and n.health > 0:
 				targets.append(n)
@@ -2294,10 +2581,7 @@ func perform_action(user: Node2D, action: Dictionary) -> void:
 	elif target_mode == "single_enemy":
 		var tgt_inst: Node2D = action.get("target_instance", null)
 		if tgt_inst == null or not is_instance_valid(tgt_inst) or tgt_inst.health <= 0:
-			if String(user.team) == "enemy":
-				tgt_inst = _first_alive(heroes)
-			else:
-				tgt_inst = _first_alive(enemies)
+			tgt_inst = _first_alive(heroes if String(user.team) == "enemy" else enemies)
 		if tgt_inst != null and is_instance_valid(tgt_inst):
 			targets.append(tgt_inst)
 
@@ -2310,23 +2594,25 @@ func perform_action(user: Node2D, action: Dictionary) -> void:
 		targets.append(user)
 
 	elif target_mode == "all_allies":
-		var pool_ally: Array[Node2D] = []
-		if String(user.team) == "hero":
-			pool_ally = heroes
-		else:
-			pool_ally = enemies
+		var pool_ally: Array[Node2D] = (enemies if String(user.team) == "enemy" else heroes)
 		for a in pool_ally:
 			if is_instance_valid(a) and a.health > 0:
 				targets.append(a)
 
-	# лог для наглядности
+	# лог
 	var tnames := []
 	for tinst in targets:
 		if tinst != null and is_instance_valid(tinst):
 			tnames.append(tinst.nick)
 	print("[ACT] ", user.nick, " → ", name_dbg, " (", target_mode, "), цели: ", tnames)
 
-	# --- QTE? ---
+	# ───────── ресурс ─────────
+	if not _can_pay_cost(user, action):
+		print("[ACT] ", user.nick, " не может оплатить действие ", name_dbg)
+		return
+	_pay_cost(user, action)
+
+	# ───────── QTE/тип действия ─────────
 	var has_qte := false
 	if action.has("qte"):
 		var q = action.get("qte", {})
@@ -2334,56 +2620,141 @@ func perform_action(user: Node2D, action: Dictionary) -> void:
 			var st = q.get("steps", [])
 			if st is Array and st.size() > 0:
 				has_qte = true
-	print("[ACT] QTE: ", has_qte)
 
-	if has_qte:
-		await _enemy_perform_with_qte(user, targets, action)
-		return
-
-	# --- Без QTE: двигаемся/бьём как раньше ---
-	if targets.size() == 0:
-		print("[ACT] Нет валидных целей, конец действия.")
-		return
-
-	# затраты ресурса (если заданы)
-	var cost_type = action.get("cost_type", null)
-	var cost := int(action.get("cost", 0))
-	if cost_type == "mana":
-		user.mana = max(0, user.mana - cost)
-	elif cost_type == "stamina":
-		user.stamina = max(0, user.stamina - cost)
-
+	var is_damage := action.get("damage") != null
 	var is_magic := String(action.get("type","")) == "magic"
-	var effs: Array = action.get("effects_to_targets", [])
 
-	if action.get("damage") != null:
-		var dmg = max(1, int(action.get("damage", user.attack)))
-		if target_mode == "single_enemy":
-			_is_acting = true
-			if is_magic:
-				await _do_magic_single(user, targets[0], dmg, effs)
-			else:
-				await _do_melee_single(user, targets[0], dmg, effs)
-			_is_acting = false
-		elif target_mode == "all_enemies":
-			_is_acting = true
-			if is_magic:
-				await _do_magic_aoe(user, dmg, effs)
-			else:
-				await _do_melee_aoe(user, dmg, effs)
-			_is_acting = false
+	# QTE: урон → с защитным QTE игрока; поддержка → общий QTE-проигрыватель
+	if has_qte:
+		if is_damage:
+			await _enemy_perform_with_qte(user, targets, action)
 		else:
-			for t in targets:
-				if t != null and is_instance_valid(t):
-					t.health = max(0, t.health - dmg)
-					if t.health <= 0:
-						_on_enemy_died(t)
+			var tlist: Array[Node2D] = (targets if targets.size() > 0 else [user])
+			await _perform_with_qte(user, tlist, action)
+		return
 
-	elif action.get("heal") != null:
+	# ───────── без QTE ─────────
+	if is_damage:
+		if targets.size() == 0:
+			print("[ACT] Нет валидных целей для урона, конец действия.")
+			return
+
+		var dmg = max(1, int(action.get("damage", user.attack)))
+		var effs: Array = action.get("effects_to_targets", [])
+
 		_is_acting = true
-		await _do_support(user, targets[0], action)
+		match target_mode:
+			"single_enemy":
+				if is_magic:
+					await _do_magic_single(user, targets[0], dmg, effs)
+				else:
+					await _do_melee_single(user, targets[0], dmg, effs)
+			"all_enemies":
+				if is_magic:
+					await _do_magic_aoe(user, dmg, effs)
+				else:
+					await _do_melee_aoe(user, dmg, effs)
+			_:
+				# на всякий фолбэк — просто применим по всем собранным "targets"
+				for t in targets:
+					if is_instance_valid(t):
+						t.health = max(0, t.health - dmg)
+						if t.health <= 0:
+							_on_enemy_died(t)
 		_is_acting = false
+		return
 
+	# поддержка/баффы/хил без урона
+	_is_acting = true
+	if target_mode == "all_allies":
+		# одна анимация — применяем и heal, и эффекты на всех союзников
+		var ap = user.anim
+		var clip := "cast"
+		if ap != null:
+			if ap.has_animation("cast"):
+				clip = "cast"
+			elif ap.has_animation("skill"):
+				clip = "skill"
+		_play_if_has(ap, clip)
+
+		var clip_len := 0.5
+		if ap != null and ap.has_animation(clip):
+			clip_len = ap.get_animation(clip).length
+		var apply_delay = clamp(0.30 * clip_len, 0.06, 0.60)
+		await get_tree().create_timer(apply_delay).timeout
+
+		var heal_amt := int(action.get("heal", 0))
+		if heal_amt > 0:
+			for ally in targets:
+				if is_instance_valid(ally):
+					ally.health = min(ally.max_health, max(0, ally.health + heal_amt))
+
+		var effs_targets: Array = action.get("effects_to_targets", [])
+		if effs_targets.size() > 0:
+			for ally in targets:
+				if is_instance_valid(ally) and ally.health > 0:
+					_apply_effects(effs_targets, ally)
+
+		var effs_self: Array = action.get("effects_to_self", [])
+		if effs_self.size() > 0:
+			_apply_effects(effs_self, user)
+
+		await _wait_anim_end(ap, clip, 1.2)
+		_play_if_has(ap, "idle")
+	else:
+		var tgt_for_support: Node2D = (targets[0] if not targets.is_empty() and is_instance_valid(targets[0]) else user)
+		await _do_support(user, tgt_for_support, action)
+	_is_acting = false
+		
+func _query_incoming_mods(target: Node2D) -> Dictionary:
+	# стягиваем из системы эффектов персонажа, если она умеет вернуть
+	var evade := 0.0
+	var crit_mult := 1.0
+	if target != null and is_instance_valid(target):
+		if target.has_method("list_effects"):
+			for ex in target.call("list_effects"):
+				if typeof(ex) == TYPE_DICTIONARY:
+					evade     += float(ex.get("evade_chance", 0.0))
+					crit_mult *= float(ex.get("crit_taken_mult", 1.0))
+		elif target.has_method("get_effect"):
+			# минимальная совместимость по id
+			var ex = target.call("get_effect", "squirrel_dodge")
+			if typeof(ex) == TYPE_DICTIONARY:
+				evade     += float(ex.get("evade_chance", 0.0))
+				crit_mult *= float(ex.get("crit_taken_mult", 1.0))
+	return {"evade": clamp(evade, 0.0, 0.9), "crit_mult": max(1.0, crit_mult)}
+
+func _show_popup_number(target: Node2D, amount: int, kind: String = "dmg", is_crit := false) -> void:
+	if world_ui == null or not is_instance_valid(target): return
+	var lab := Label.new()
+	lab.z_as_relative = false
+	lab.z_index = 999
+	var txt := str(amount)
+	if kind == "miss": txt = "MISS"
+	lab.text = txt
+	var fs := 24
+	if is_crit: fs = 34
+	lab.add_theme_font_size_override("font_size", fs)
+
+	match kind:
+		"dmg":
+			lab.modulate = Color(1, 0.2, 0.2, 1)
+		"heal":
+			lab.modulate = Color(0.2, 1, 0.2, 1)
+		"crit":
+			lab.modulate = Color(1, 0.9, 0.2, 1)
+		"miss":
+			lab.modulate = Color(0.8, 0.8, 0.8, 1)
+
+	world_ui.add_child(lab)
+	var sp := _world_to_screen(target.global_position) + Vector2(0, -HB_OFFSET_Y - 12)
+	lab.global_position = sp
+
+	var tw := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lab, "global_position", sp + Vector2(0, -36), 0.45)
+	tw.parallel().tween_property(lab, "modulate:a", 0.0, 0.45)
+	await tw.finished
+	if is_instance_valid(lab): lab.queue_free()
 
 func _aoe_focus_point() -> Vector2:
 	var focus := _screen_center_world() + Vector2(AOE_CENTER_X_OFFSET, AOE_CENTER_Y_OFFSET)

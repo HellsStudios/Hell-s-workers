@@ -13,53 +13,54 @@
 	  "pack": [],
 	  "skills": [
 		{
-		  "name": "Мощный удар",
+		  "name": "Печать начальства",
 		  "type": "physical",
 		  "target": "single_enemy",
-		  "damage": 18, "accuracy": 0.9, "crit": 0.1,
+		  "damage": 18, "accuracy": 0.90, "crit": 0.10,
 		  "costs": { "stamina": 10 },
 		  "qte": {
-		  "steps": [
-			{ "anim":"attack",  "duration": 1.10, "segments": [[0.35,0.45]],            "slowmo": 0.25 },
-			{ "anim":"attack2", "duration": 1.00, "segments": [[0.25,0.33],[0.62,0.68]], "slowmo": 0.25 }
-		  ],
-		  "on_success": { "damage_mult": 1.25, "duration_bonus": 1, "spread": "none" },
-		  "on_perfect": { "damage_mult": 1.50, "duration_bonus": 2, "spread": "all_enemies" },
-		  "on_fail":    { "damage_mult": 0.75 }
-		}
-		},
-		{
-		  "name": "Размах клинком",
-		  "type": "physical",
-		  "target": "all_enemies",
-		  "damage": 10,
-		  "accuracy": 0.85,
-		  "crit": 0.05,
-		  "costs": { "stamina": 15 },
-		  "qte": {
 			"steps": [
-			  { "anim": "attack", "duration": 0.60, "segments": [[0.40, 0.55]],
-				"select": { "mode": "random_enemies", "count": 1 } },
-
-			  { "anim": "attack", "duration": 0.60, "segments": [[0.35, 0.50]],
-				"select": { "mode": "random_enemies", "count": 2 } },
-
-			  { "anim": "attack", "duration": 0.70, "segments": [[0.45, 0.55]],
-				"select": { "mode": "all_enemies" } }
+			  { "anim":"attack",  "duration": 1.10, "segments": [[0.35,0.45]],            "slowmo": 0.25 },
+			  { "anim":"attack", "duration": 1.00, "segments": [[0.25,0.33],[0.62,0.68]], "slowmo": 0.25 }
 			],
-			"on_success": { "damage_mult": 1.0 },
-			"on_perfect": { "damage_mult": 1.25 },
-			"on_fail":    { "damage_mult": 0.8 }
+			"on_success": { "damage_mult": 1.25, "duration_bonus": 1, "spread": "none" },
+			"on_perfect": { "damage_mult": 1.50, "duration_bonus": 2, "spread": "all_enemies" },
+			"on_fail":    { "damage_mult": 0.75 }
 		  }
 		},
 		{
-		  "name": "Защитная стойка",
+		  "name": "Круг жадности",
+		  "type": "physical",
+		  "target": "all_enemies",
+		  "damage": 10, "accuracy": 0.85, "crit": 0.05,
+		  "costs": { "stamina": 15 },
+		  "qte": {
+			"steps": [
+			  { "anim": "attack", "duration": 0.60, "segments": [[0.40, 0.55]], "select": { "mode": "random_enemies", "count": 1 } },
+			  { "anim": "attack", "duration": 0.60, "segments": [[0.35, 0.50]], "select": { "mode": "random_enemies", "count": 2 } },
+			  { "anim": "attack", "duration": 0.70, "segments": [[0.45, 0.55]], "select": { "mode": "all_enemies" } }
+			],
+			"on_success": { "damage_mult": 1.00 },
+			"on_perfect": { "damage_mult": 1.25 },
+			"on_fail":    { "damage_mult": 0.80 }
+		  }
+		},
+		{
+		  "name": "Служебный регламент",
 		  "type": "physical",
 		  "target": "self",
 		  "effects_to_self": [
 			{ "id": "def_up", "name": "Защита +", "is_buff": true, "defense": 5, "duration": 2 }
 		  ],
-		  "costs": { "stamina": 6 }
+		  "costs": { "stamina": 6 },
+		  "qte": {
+			"steps": [
+			  { "anim": "block", "duration": 0.75, "segments": [[0.40, 0.52]] }
+			],
+			"on_success": { "duration_bonus": 1 },
+			"on_perfect": { "duration_bonus": 2 },
+			"on_fail":    { "duration_bonus": 0 }
+		  }
 		}
 	  ]
 	},
@@ -71,7 +72,7 @@
 	  "max_stamina": 30, "stamina": 30,
 	  "max_mana": 90, "mana": 90,
 	  "attack": 8, "defense": 6, "speed": 12,
-		"carry_slots_max": 3,
+	  "carry_slots_max": 3,
 	  "forbidden_categories": ["meat"],
 	  "pack": [
 		{"id": "potion_small", "count": 5},
@@ -80,31 +81,67 @@
 	  ],
 	  "skills": [
 		{
-		  "name": "Ядовитый удар",
+		  "name": "Полтер-тычок",
 		  "type": "physical",
 		  "target": "single_enemy",
-		  "damage": 10, "accuracy": 0.9,
+		  "damage": 9, "accuracy": 0.95,
+		  "costs": { "mana": 6 },
+		  "qte": {
+			"steps": [
+			  { "anim": "attack", "duration": 0.70, "segments": [[0.40, 0.52]] }
+			],
+			"on_success": { "damage_mult": 1.10 },
+			"on_perfect": { "damage_mult": 1.30 },
+			"on_fail":    { "damage_mult": 0.85 }
+		  }
+		},
+		{
+		  "name": "Холодок из-за плеча",
+		  "type": "magic",
+		  "target": "single_enemy",
+		  "damage": 14, "accuracy": 0.90,
 		  "effects_to_targets": [
-			{ "id": "poison", "name": "Яд", "is_buff": false, "dot": 2, "duration": 3 }
+			{ "id": "slow", "name": "Замедление", "is_buff": false, "speed": -2, "duration": 2 }
 		  ],
-		  "costs": { "mana": 10 }
+		  "costs": { "mana": 10 },
+		  "qte": {
+			"steps": [
+			  { "anim": "cast", "duration": 0.80, "segments": [[0.44, 0.56]] }
+			],
+			"on_success": { "damage_mult": 1.00, "duration_bonus": 1 },
+			"on_perfect": { "damage_mult": 1.20, "duration_bonus": 2 },
+			"on_fail":    { "damage_mult": 0.85 }
+		  }
+		},
+		{
+		  "name": "Шёпот из стен",
+		  "type": "magic",
+		  "target": "all_enemies",
+		  "damage": 7, "accuracy": 0.95,
+		  "costs": { "mana": 12 },
+		  "qte": {
+			"steps": [
+			  { "anim": "cast", "duration": 0.90, "segments": [[0.45, 0.55]] }
+			],
+			"on_success": { "damage_mult": 1.00 },
+			"on_perfect": { "damage_mult": 1.20 },
+			"on_fail":    { "damage_mult": 0.85 }
+		  }
 		},
 		{
 		  "name": "Лечение",
 		  "type": "magic",
 		  "target": "single_ally",
 		  "heal": 22, "accuracy": 1.0,
-		  "costs": { "mana": 12 }
-		},
-		{
-		  "name": "Ледяной шип",
-		  "type": "magic",
-		  "target": "single_enemy",
-		  "damage": 14, "accuracy": 0.9,
-		  "effects_to_targets": [
-			{ "id": "slow", "name": "Замедление", "is_buff": false, "speed": -2, "duration": 2 }
-		  ],
-		  "costs": { "mana": 10 }
+		  "costs": { "mana": 12 },
+		  "qte": {
+			"steps": [
+			  { "anim": "cast", "duration": 0.75, "segments": [[0.40, 0.52]] }
+			],
+			"on_success": { "heal_mult": 1.10 },
+			"on_perfect": { "heal_mult": 1.25 },
+			"on_fail":    { "heal_mult": 0.90 }
+		  }
 		}
 	  ]
 	},
@@ -127,7 +164,15 @@
 		  "effects_to_targets": [
 			{ "id": "atk_up", "name": "Сила +", "is_buff": true, "attack": 5, "duration": 3 }
 		  ],
-		  "costs": { "mana": 10 }
+		  "costs": { "mana": 10 },
+		  "qte": {
+			"steps": [
+			  { "anim": "cast", "duration": 0.80, "segments": [[0.42, 0.54]] }
+			],
+			"on_success": { "duration_bonus": 1 },
+			"on_perfect": { "duration_bonus": 2 },
+			"on_fail":    { "duration_bonus": 0 }
+		  }
 		},
 		{
 		  "name": "Барьер",
@@ -136,7 +181,15 @@
 		  "effects_to_targets": [
 			{ "id": "def_up", "name": "Барьер", "is_buff": true, "defense": 8, "duration": 3 }
 		  ],
-		  "costs": { "mana": 8 }
+		  "costs": { "mana": 8 },
+		  "qte": {
+			"steps": [
+			  { "anim": "cast", "duration": 0.75, "segments": [[0.40, 0.52]] }
+			],
+			"on_success": { "duration_bonus": 1 },
+			"on_perfect": { "duration_bonus": 2 },
+			"on_fail":    { "duration_bonus": 0 }
+		  }
 		},
 		{
 		  "name": "Дезориентация",
@@ -145,7 +198,15 @@
 		  "effects_to_targets": [
 			{ "id": "disorient", "name": "Дезориентация", "is_buff": false, "speed": -2, "duration": 2 }
 		  ],
-		  "costs": { "mana": 6 }
+		  "costs": { "mana": 6 },
+		  "qte": {
+			"steps": [
+			  { "anim": "cast", "duration": 0.70, "segments": [[0.44, 0.56]] }
+			],
+			"on_success": { "duration_bonus": 1 },
+			"on_perfect": { "duration_bonus": 2 },
+			"on_fail":    { "duration_bonus": 0.5 }
+		  }
 		}
 	  ]
 	}
