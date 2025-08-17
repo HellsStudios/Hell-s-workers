@@ -32,6 +32,25 @@ var _tween: Tween
 
 @export var ENHANCE_TINT := Color(1.0, 0.95, 0.4) # мягкое «золото»
 
+@export var SALLY_RED_TINT  := Color(1.0, 0.45, 0.45)
+@export var SALLY_BLUE_TINT := Color(0.55, 0.75, 1.0)
+@export var SALLY_GOLD_TINT := Color(1.0, 0.92, 0.35)
+
+func _sally_tint_for_skill(hero: Node2D, skill: Dictionary) -> Color:
+	if hero == null or not is_instance_valid(hero): return Color(1,1,1)
+	if String(hero.nick) != "Sally": return Color(1,1,1)
+	if bool(hero.get_meta("sally_golden", false)):
+		return SALLY_GOLD_TINT
+	var desc := String(skill.get("desc", skill.get("description", skill.get("text","")))).to_lower()
+	var words: Dictionary = hero.get_meta("sally_words", {})
+	var blue := String(words.get("blue","")).to_lower()
+	var red  := String(words.get("red","")).to_lower()
+	if blue != "" and desc.findn(blue) != -1:
+		return SALLY_BLUE_TINT
+	if red  != "" and desc.findn(red)  != -1:
+		return SALLY_RED_TINT
+	return Color(1,1,1)
+
 func _can_enhance(hero: Node2D, skill: Dictionary) -> bool:
 	var name := String(skill.get("name",""))
 	if String(hero.nick) != "Berit" or name == "":
@@ -240,6 +259,7 @@ func _collapse_desc_immediately() -> void:
 		SkillMenuContainer.queue_redraw()
 	reset_size()  # вернёт Control к минимальным размерам
 	
+	
 func _on_berit_coins_changed() -> void:
 	if current_hero and String(current_hero.nick) == "Berit":
 		update_skill_buttons_for(current_hero)
@@ -291,9 +311,13 @@ func _on_BackButton2_pressed():
 
 # ---------- skills ----------
 func update_skill_buttons_for(hero: Node2D):
-	_collapse_desc_immediately()  # схлопнуть остатки прошлого хода
+	_collapse_desc_immediately()
+	if hero == null or not is_instance_valid(hero):
+		return
+
 	var skills: Array = hero.abilities
 	_log("[AP] POPULATE hero=%s abilities=%d" % [String(hero.nick), skills.size()])
+
 	for i in range(6):
 		var path := "SkillMenuContainer/SkillButton%d" % (i+1)
 		if not has_node(path):
@@ -301,32 +325,40 @@ func update_skill_buttons_for(hero: Node2D):
 			continue
 		var btn: Button = get_node(path)
 
+		# сброс в дефолт, чтобы «пустые» не торчали
 		for c in btn.get_signal_connection_list("pressed"):
 			btn.disconnect("pressed", c.callable)
+		btn.text = ""
+		btn.disabled = true
+		btn.visible = false
+		btn.modulate = Color(1,1,1)
+		btn.set_meta("skill", null)
 
-		if i < skills.size():
-			var skill: Dictionary = skills[i]
-			btn.text = _compose_btn_caption(skill) # ← только новый способ
-			btn.visible = true
-			btn.disabled = false
-			btn.set_meta("skill", skill)
+		# включаем только если есть соответствующий скилл
+		if i >= skills.size() or typeof(skills[i]) != TYPE_DICTIONARY:
+			continue
 
-			# хватает ли обычных ресурсов
-			var can_use := true
-			var battle := get_tree().current_scene
-			if battle and battle.has_method("_can_pay_cost"):
-				can_use = bool(battle.call("_can_pay_cost", hero, skill))
-			btn.disabled = not can_use
+		var skill: Dictionary = skills[i]
+		btn.text = _compose_btn_caption(skill)
+		btn.visible = true
+		btn.set_meta("skill", skill)
 
-			# <<< ВОТ ЭТО ВЕРНЕТ ПОДСВЕТКУ
+		# доступность по стоимости
+		var can_use := true
+		var battle := get_tree().current_scene
+		if battle and battle.has_method("_can_pay_cost"):
+			can_use = bool(battle.call("_can_pay_cost", hero, skill))
+		btn.disabled = not can_use
+
+		# подсветки
+		if String(hero.nick) == "Berit":
 			_apply_enhance_highlight(btn, _can_enhance(hero, skill))
-			_log("[AP] BTN i=%d name='%s' can_use=%s" % [i+1, btn.text, str(can_use)])
+		elif String(hero.nick) == "Sally":
+			btn.modulate = _sally_tint_for_skill(hero, skill)
 
-			_hook_hover_for_desc(btn)
-			btn.connect("pressed", Callable(self, "_on_skill_pressed").bind(skill))
-		else:
-			btn.visible = false
-			_log("[AP] BTN i=%d hidden" % [i+1])
+		# описание и клик
+		_hook_hover_for_desc(btn)
+		btn.connect("pressed", Callable(self, "_on_skill_pressed").bind(skill))
 
 func _on_skill_index(i: int) -> void:
 	if current_hero == null: return

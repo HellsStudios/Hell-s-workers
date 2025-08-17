@@ -22,7 +22,7 @@ var effects: Array = []
 	"value": 0,
 	"max": 0
 }
-
+signal mechanic_changed
 # Семь смертных грехов – значения от 0 до 100, например
 @export var sin_pride: int = 0
 @export var sin_greed: int = 0
@@ -32,6 +32,7 @@ var effects: Array = []
 @export var sin_wrath: int = 0
 @export var sin_sloth: int = 0
 
+@export var DEBUG_EFFECTS := false
 var dodge_window: float = 0.12
 var block_window: float = 0.18
 var block_reduce: float = 0.5  # 0.5 = блок режет урон наполовину при «успехе»
@@ -41,6 +42,221 @@ var abilities: Array = []
 
 # Команда (сторона) персонажа: "hero" или "enemy"
 var team: String = ""
+
+func set_mechanic_value(v: int) -> void:
+	if mechanic.size() == 0: return
+	var mx := int(mechanic.get("max", 0))
+	if mx > 0:
+		v = clamp(v, 0, mx)
+	if int(mechanic.get("value", 0)) == v:
+		return
+	mechanic["value"] = v
+	emit_signal("mechanic_changed")
+
+func _ef_log(msg: String) -> void:
+	if DEBUG_EFFECTS:
+		print("[EFF] ", String(nick), ": ", msg)
+
+func has_effect(id: String) -> bool:
+	for e in effects:
+		if String(e.get("id","")) == id:
+			return true
+	return false
+
+func remove_effect(id: String) -> void:
+	var out: Array = []
+	for e in effects:
+		if String(e.get("id","")) != id:
+			out.append(e)
+	effects = out
+
+func clear_effects() -> void:
+	effects.clear()
+
+func _effect_find_index(id: String) -> int:
+	for i in range(effects.size()):
+		var e: Dictionary = effects[i]
+		if String(e.get("id","")) == id:
+			return i
+	return -1
+
+# Мердж прототипа из БД и входных полей.
+func _effect_normalize(src: Dictionary) -> Dictionary:
+	var rec: Dictionary = {}
+
+	var id := String(src.get("id",""))
+	if id != "":
+		var proto = GameManager.get_effect_proto(id)
+		if not proto.is_empty():
+			rec = proto.duplicate(true)
+
+	# поверх прототипа — локальные поля
+	for k in src.keys():
+		if k == "mods":
+			var base: Dictionary = rec.get("mods", {})
+			var inc: Dictionary = src["mods"] if src.has("mods") else {}
+			for mk in inc.keys():
+				base[mk] = inc[mk]
+			rec["mods"] = base
+		else:
+			rec[k] = src[k]
+
+	# обязательные значения по умолчанию
+	rec["id"] = id
+	if not rec.has("name"):    rec["name"]    = id
+	if not rec.has("is_buff"): rec["is_buff"] = false
+	if not rec.has("mods"):    rec["mods"]    = {}
+	if not rec.has("stack"):   rec["stack"]   = false
+
+	# Определяем перманентность
+	var permanent := bool(rec.get("permanent", false))
+	if not permanent:
+		if rec.has("duration"):
+			var d_raw := int(rec.get("duration", 0))
+			if d_raw >= 999:
+				permanent = true
+		else:
+			# если duration не указан, а в базе стоит permanent: true
+			var base = GameManager.get_effect_proto(id)
+			if not base.is_empty() and bool(base.get("permanent", false)):
+				permanent = true
+
+	rec["permanent"] = permanent
+
+	if permanent:
+		if rec.has("duration"):
+			rec.erase("duration")
+	else:
+		var d := 0
+		if rec.has("duration"):
+			d = int(rec.get("duration", 0))
+		if d < 1:
+			d = 1
+		rec["duration"] = d
+
+	return rec
+
+# Публичное API: добавление/продление/стак
+func add_effect(data: Dictionary) -> void:
+	if data == null or typeof(data) != TYPE_DICTIONARY: return
+	if not data.has("id"): return
+
+	var in_id := String(data.get("id",""))
+
+	# Взаимоисключение
+	if in_id == "apathy":
+		remove_effect("psychopathy")
+	elif in_id == "psychopathy":
+		remove_effect("apathy")
+
+	var rec := _effect_normalize(data)
+	if data == null or typeof(data) != TYPE_DICTIONARY:
+		return
+	if not data.has("id"):
+		return
+
+
+	var id := String(rec.get("id",""))
+	var idx := _effect_find_index(id)
+
+	if idx >= 0:
+		# Уже есть такой id
+		var cur: Dictionary = effects[idx]
+		var cur_stack := bool(cur.get("stack", false))
+		var new_stack := bool(rec.get("stack", false))
+
+		if cur_stack or new_stack:
+			# Разрешаем накопление — кладём отдельной записью
+			effects.append(rec)
+			_ef_log("stack '" + id + "'")
+			return
+
+		# Без стака: апдейт
+		var became_perm := bool(cur.get("permanent", false)) or bool(rec.get("permanent", false))
+		cur["permanent"] = became_perm
+
+		if not became_perm:
+			var cd := int(cur.get("duration", 1))
+			var nd := int(rec.get("duration", 1))
+			if nd > cd:
+				cur["duration"] = nd
+
+		# Обновим информативные поля и модификаторы
+		cur["name"]    = rec.get("name", cur.get("name",""))
+		cur["is_buff"] = rec.get("is_buff", cur.get("is_buff", false))
+		var base_mods: Dictionary = cur.get("mods", {})
+		var inc_mods:  Dictionary = rec.get("mods", {})
+		for mk in inc_mods.keys():
+			base_mods[mk] = inc_mods[mk]
+		cur["mods"] = base_mods
+
+		cur["stack"] = cur_stack or new_stack
+
+		# ВАЖНО: пере-присвоить элемент массива (чтобы не попасть на «read-only» мутацию)
+		effects[idx] = cur
+
+		_ef_log("refresh '" + id + "' perm=" + str(cur.get("permanent", false)) + " dur=" + str(cur.get("duration", -1)))
+	else:
+		effects.append(rec)
+		_ef_log("add '" + id + "' perm=" + str(rec.get("permanent", false)) + " dur=" + str(rec.get("duration", -1)))
+
+# Пакетное применение списка эффектов (как в умениях/предметах)
+func apply_effects(list_in: Array) -> void:
+	if list_in == null:
+		return
+	for e in list_in:
+		if typeof(e) == TYPE_DICTIONARY and e.has("id"):
+			add_effect(e)
+
+# Тик длительностей. Вызывайте строго один раз за ход на персонажа
+# (либо в начале хода, либо в конце — на ваш выбор, но последовательно во всей игре).
+func tick_effects_duration() -> void:
+	var out: Array = []
+	for e in effects:
+		var perm := bool(e.get("permanent", false))
+		if perm:
+			out.append(e)
+		else:
+			var d := int(e.get("duration", 1)) - 1
+			if d > 0:
+				e["duration"] = d
+				out.append(e)
+	effects = out
+
+# Снимок эффектов (без возможности внешней мутации)
+func get_effects_snapshot() -> Array:
+	var out: Array = []
+	for e in effects:
+		out.append((e as Dictionary).duplicate(true))
+	return out
+
+# Итоговый стат с учётом mods: <stat> и <stat>_mult
+func effective_stat(which: String) -> float:
+	var base := 0.0
+	if which == "attack":
+		base = float(attack)
+	elif which == "defense":
+		base = float(defense)
+	elif which == "speed":
+		base = float(speed)
+	elif which == "max_health":
+		base = float(max_health)
+	elif which == "max_mana":
+		base = float(max_mana)
+	else:
+		base = 0.0
+
+	var add := 0.0
+	var mult := 1.0
+	for e in effects:
+		var m: Dictionary = e.get("mods", {})
+		if m.has(which):
+			add += float(m[which])
+		var mkey := which + "_mult"
+		if m.has(mkey):
+			mult *= float(m[mkey])
+
+	return (base + add) * mult
 
 signal coins_changed
 var ether_coins: Array[String] = []  # ["yellow","blue","green"], максимум 7
@@ -82,6 +298,9 @@ func pay_coins(req: Dictionary) -> void:
 
 
 func _ready():
+	if String(nick) == "Sally":
+		if not has_meta("sally_insp"):   set_meta("sally_insp", 0)
+		if not has_meta("sally_golden"): set_meta("sally_golden", false)
 	_init_abilities()
 	play_idle()
 
@@ -166,8 +385,18 @@ func init_from_dict(d: Dictionary) -> void:
 	health = d.get("hp", max_health)
 	mana = d.get("mana", max_mana)
 	stamina = d.get("stamina", max_stamina)
+	
+	# ── Салли начинает с половины максимальной маны ──
+	if String(nick) == "Sally":
+		mana = int(max_mana * 0.5)
 
 	abilities = d.get("skills", [])
+	for i in abilities.size():
+		var s = abilities[i]
+		var costs = s.get("costs", {})
+		var mana_cost := int(costs.get("mana", s.get("mana_cost", 0)))
+		s["__base_costs"] = {"mana": mana_cost}
+		abilities[i] = s
 		# ... ваш старый код инициализации ...
 	if d.has("carry_slots_max"):
 		carry_slots_max = int(d["carry_slots_max"])
@@ -204,37 +433,62 @@ func _init_abilities():
 		
 
 
-func add_effect(e: Dictionary) -> void:
-	var id := String(e.get("id",""))
-	if id != "":
-		# без стака: продлеваем существующий
-		for i in range(effects.size()):
-			var ex: Dictionary = effects[i]
-			if String(ex.get("id","")) == id and not bool(e.get("stack", false)):
-				ex["duration"] = int(e.get("duration", ex.get("duration", -1)))
-				effects[i] = ex
-				return
-	effects.append(e)
 
 func get_effects() -> Array:
 	return effects
 
-func effective_stat(which: String) -> float:
-	var base := 0.0
-	match which:
-		"attack":  base = float(attack)
-		"defense": base = float(defense)
-		"speed":   base = float(speed)
-		_:         base = 0.0
-	for ex in effects:
-		base += float(ex.get(which, 0.0))
-	return base
 
 func on_turn_start() -> void:
 	# DoT
 	for ex in effects:
 		if ex.has("dot"):
 			health = max(0, health - int(ex.get("dot", 0)))
+	
+	if String(nick) == "Sally":
+		if mana <= 0:
+			if not has_effect("apathy"):
+				add_effect({"id":"apathy"})
+		elif max_mana > 0 and mana >= max_mana:
+			if not has_effect("psychopathy"):
+				add_effect({"id":"psychopathy"})
+				
+	if String(nick) == "Sally":
+		var pool: Array = GameManager.get_sally_words_pool()
+		if pool.size() >= 2:
+			# Берём два разных случайных слова
+			var i := int(randi() % pool.size())
+			var j := int(randi() % pool.size())
+			while j == i and pool.size() > 1:
+				j = int(randi() % pool.size())
+
+			var blue_word := String(pool[i])
+			var red_word  := String(pool[j])
+
+			# в mechanic — чтобы HUD/карточки могли показывать
+			if not mechanic.has("id") or String(mechanic.get("id","")) != "sally_words":
+				mechanic.clear()
+				mechanic["id"] = "sally_words"
+				mechanic["name"] = "Слова"
+			mechanic["blue_word"] = blue_word
+			mechanic["red_word"]  = red_word
+
+			# дублируем в meta (если где-то в UI уже используют meta)
+			set_meta("sally_words", {"blue": blue_word, "red": red_word})
+
+				
+	var mana_drain := 0
+	for ex in effects:
+		if ex.has("mods"):
+			var mods = ex["mods"]
+			if typeof(mods) == TYPE_DICTIONARY and mods.has("mana_drain_per_turn"):
+				mana_drain += int(mods["mana_drain_per_turn"])
+	if mana_drain > 0:
+		mana = max(0, mana - mana_drain)
+		
+	if String(nick) == "Sally":
+		if mana > 0:
+			if has_effect("apathy"):
+				remove_effect("apathy")
 
 	# реген стамины героя
 	if team == "hero" and max_stamina > 0:

@@ -22,6 +22,15 @@ var hero: Node2D
 @export var EFFECT_ICON_DIR := "res://Assets/icons/effects"
 @export var EFFECT_ICON_FALLBACK := "res://Assets/icons/effects/_default.png"
 
+var sally_words_box: HBoxContainer = null
+var sally_lbl_blue: Label = null
+var sally_lbl_red: Label = null
+@export var INSP_ICONS := [
+	"res://Assets/icons/mechanics/inspiration_0.png",
+	"res://Assets/icons/mechanics/inspiration_1.png",
+	"res://Assets/icons/mechanics/inspiration_2.png",
+	"res://Assets/icons/mechanics/inspiration_3.png",
+]
 
 
 var coins_box: HBoxContainer = null
@@ -123,6 +132,8 @@ func _process(_dt):
 	tm.max_value = TURN_THRESHOLD
 	tm.value     = clampf(meter, 0.0, TURN_THRESHOLD)
 	tm_val.text      = str(int(meter), " / ", int(TURN_THRESHOLD))
+	if String(hero.nick) == "Sally":
+		_refresh_mechanic()  # чтобы слова/иконка подхватывались динамически
 	
 func _refresh_effect_icons():
 	for c in hero_effects.get_children(): c.queue_free()
@@ -150,6 +161,54 @@ func _refresh_mechanic() -> void:
 	if hero == null or not is_instance_valid(hero):
 		mech_box.visible = false
 		return
+
+	# ── Салли: 2 слова + иконка Вдохновения (0..3) ──
+	if String(hero.nick) == "Sally":
+		mech_box.show()
+		if mech_val and is_instance_valid(mech_val):
+			mech_val.hide()
+
+		# иконка вдохновения
+		var insp := 0
+		var m := {}
+		if hero.has_method("get_mechanic"):
+			m = hero.call("get_mechanic")
+		else:
+			m = hero.get("mechanic")
+		if typeof(m) == TYPE_DICTIONARY and String(m.get("id","")) == "inspiration":
+			insp = clamp(int(m.get("value", 0)), 0, 3)
+		if INSP_ICONS.size() > insp and ResourceLoader.exists(INSP_ICONS[insp]):
+			mech_icon.texture = load(INSP_ICONS[insp])
+
+		# контейнер слов
+		if sally_words_box == null or not is_instance_valid(sally_words_box):
+			sally_words_box = HBoxContainer.new()
+			sally_words_box.name = "SallyWords"
+			sally_words_box.add_theme_constant_override("separation", 8)
+			mech_box.add_child(sally_words_box)
+
+			sally_lbl_blue = Label.new()
+			sally_lbl_red  = Label.new()
+			sally_words_box.add_child(sally_lbl_blue)
+			sally_words_box.add_child(sally_lbl_red)
+
+		var words: Dictionary = hero.get_meta("sally_words", {})
+		var blue := String(words.get("blue",""))
+		var red  := String(words.get("red",""))
+
+		var golden := bool(hero.get_meta("sally_golden", false))
+		if golden:
+			sally_lbl_blue.text = blue if blue != "" else "—"
+			sally_lbl_red.text  = red  if red  != "" else "—"
+			sally_lbl_blue.modulate = Color(1.0, 0.92, 0.35, 1.0)
+			sally_lbl_red.modulate  = Color(1.0, 0.92, 0.35, 1.0)
+		else:
+			sally_lbl_blue.text = blue if blue != "" else "—"
+			sally_lbl_red.text  = red  if red  != "" else "—"
+			sally_lbl_blue.modulate = Color(0.55, 0.75, 1.0, 1.0) # синий
+			sally_lbl_red.modulate  = Color(1.0, 0.45, 0.45, 1.0) # красный
+
+		return  # не идём ниже
 
 	# ── Берит: вместо текста Value рисуем 7 кружков ──
 	if String(hero.nick) == "Berit":
@@ -196,12 +255,12 @@ func _refresh_mechanic() -> void:
 		return  # ← не прячем механику ниже
 
 	# ── Остальные герои: обычная механика (как было) ──
-	if not hero.has_method("get_mechanic"):
-		mech_box.visible = false
-		return
-
-	var m: Dictionary = hero.call("get_mechanic")
-	if m.size() == 0 or String(m.get("id","")) == "":
+	var m := {}
+	if hero.has_method("get_mechanic"):
+		m = hero.call("get_mechanic")
+	else:
+		m = hero.get("mechanic")
+	if typeof(m) != TYPE_DICTIONARY or m.size() == 0 or String(m.get("id","")) == "":
 		mech_box.visible = false
 		return
 

@@ -56,7 +56,27 @@ var enemy_bars: Dictionary = {}  # enemy -> bar
 @export var AOE_CAM_ZOOM := 1.12         # мягкий зум для AoE (меньше CINE_ZOOM)
 @export var AOE_CAM_SHIFT_PX := 180.0    # сдвиг камеры вправо в пикселях экрана
 @export var ENCOUNTER_ENEMIES: Array[String] = ["Yezt","Clue","Alex"]
+@export var DEBUG_SALLY := true
 
+func _sally_dbg(stage: String, actor: Node2D, skill: Dictionary, extra: Dictionary = {}) -> void:
+	if not DEBUG_SALLY: return
+	if actor == null or not is_instance_valid(actor): return
+	if String(actor.nick) != "Sally": return
+
+	var nm := String(skill.get("name","<unnamed>"))
+	var costd: Dictionary = skill.get("costs", skill.get("cost", {}))
+	var mana_cost := int(costd.get("mana", skill.get("mana_cost", 0)))
+	var is_blue := bool(skill.get("__sally_blue", false))
+	var is_red  := bool(skill.get("__sally_red", false))
+	var is_gold := bool(skill.get("__sally_gold", false))
+	print(
+		"[SALLY][", stage, "] ",
+		"skill='", nm, "' ",
+		"mana=", actor.mana, "/", actor.max_mana, " ",
+		"mana_cost=", mana_cost, " ",
+		"flags{blue=", is_blue, " red=", is_red, " gold=", is_gold, "} ",
+		"extra=", extra
+	)
 # параметры защиты по умолчанию
 @export var DODGE_WINDOW_DEFAULT := 0.01
 @export var BLOCK_WINDOW_DEFAULT := 0.16
@@ -77,6 +97,110 @@ var _battle_over := false
 var _cam_saved := { "pos": Vector2.ZERO, "zoom": Vector2.ONE, "proc": Node.PROCESS_MODE_INHERIT, "smooth": false }
 var _vp_saved_xform: Transform2D = Transform2D.IDENTITY
 
+func _sally_psycho_auto(actor: Node2D) -> void:
+	# --- собрать живых врагов ---
+	var enemy_pool: Array[Node2D] = (enemies if String(actor.team) == "hero" else heroes)
+	var enemies_alive: Array[Node2D] = []
+	for n in enemy_pool:
+		if is_instance_valid(n) and n.health > 0:
+			enemies_alive.append(n)
+	if enemies_alive.is_empty():
+		return
+	var tgt: Node2D = enemies_alive[int(randi() % enemies_alive.size())]
+
+	# --- союзники для синергий ---
+	var ally_pool: Array[Node2D] = (heroes if String(actor.team) == "hero" else enemies)
+	var berit: Node2D = null
+	var dante: Node2D = null
+	for a in ally_pool:
+		if is_instance_valid(a) and a.health > 0:
+			var nk := String(a.nick)
+			if nk == "Berit": berit = a
+			elif nk == "Dante": dante = a
+
+	# --- рандомный выбор действия из доступных ---
+	var options: Array[String] = ["heavy"]
+	if berit != null: options.append("throw_berit")
+	if dante != null: options.append("dante_aoe")
+	var choice := options[int(randi() % options.size())]
+
+	# ─────────────────────────────────────
+	# ВЕТКИ
+	# ─────────────────────────────────────
+	match choice:
+		"throw_berit":
+			_is_acting = true
+			# cast у Салли
+			var ap: AnimationPlayer = actor.anim
+			var clip := "cast"
+			_play_if_has(ap, clip)
+			var clip_len := (ap.get_animation(clip).length if ap and ap.has_animation(clip) else 0.5)
+			await get_tree().create_timer(clamp(0.30 * clip_len, 0.06, 0.60)).timeout
+
+			# Берит «полетел» к цели и обратно + урон цели, стан Бериту
+			var mover: Node2D = (berit.get_node_or_null("MotionRoot") as Node2D)
+			if mover == null: mover = berit
+			var start_pos := mover.global_position
+			var hit_pos := ( _approach_point_for(berit, tgt) if has_method("_approach_point_for") else tgt.global_position )
+
+			var tw_in := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+			tw_in.tween_property(mover, "global_position", hit_pos, 0.18)
+			await tw_in.finished
+
+			var dmg_b = max(1, berit.attack)
+			tgt.health = max(0, tgt.health - dmg_b)
+			if tgt.health <= 0: _on_enemy_died(tgt)
+
+			_apply_effects([{"id":"stun","duration":1}], berit)
+
+			_play_if_has(berit.anim, "evasion")
+			var tw_out := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			tw_out.tween_property(mover, "global_position", start_pos, 0.20)
+			await tw_out.finished
+			await _wait_anim_end(berit.anim, "evasion", 0.9)
+			_play_if_has(berit.anim, "idle")
+
+			await _wait_anim_end(ap, clip, 0.95)
+			_play_if_has(ap, "idle")
+			_is_acting = false
+			return
+
+		"dante_aoe":
+			_is_acting = true
+			# cast у Салли
+			var ap2: AnimationPlayer = actor.anim
+			var clip2 := "cast"
+			_play_if_has(ap2, clip2)
+			var clip_len2 := (ap2.get_animation(clip2).length if ap2 and ap2.has_animation(clip2) else 0.5)
+			await get_tree().create_timer(clamp(0.30 * clip_len2, 0.06, 0.60)).timeout
+
+			# Данте бьёт «block» по всем, всем врагам стан на 1, сам Данте тоже стан на 1
+			_play_if_has(dante.anim, "block")
+			var dmg_d = max(1, dante.attack)
+			for e in enemy_pool:
+				if is_instance_valid(e) and e.health > 0:
+					e.health = max(0, e.health - dmg_d)
+					_apply_effects([{"id":"stun","duration":1}], e)
+					if e.health <= 0: _on_enemy_died(e)
+
+			_apply_effects([{"id":"stun","duration":1}], dante)
+
+			await _wait_anim_end(dante.anim, "block", 0.9)
+			_play_if_has(dante.anim, "idle")
+
+			await _wait_anim_end(ap2, clip2, 0.95)
+			_play_if_has(ap2, "idle")
+			_is_acting = false
+			return
+
+		_:
+			# базовый тяжёлый удар + самоурон
+			_is_acting = true
+			var heavy = max(1, int(actor.attack * 1.5))
+			await _do_melee_single(actor, tgt, heavy)
+			actor.health = max(0, actor.health - 5)
+			_is_acting = false
+
 func _is_devoured(u: Node2D) -> bool:
 	return u != null and is_instance_valid(u) and bool(u.get_meta("devoured", false))
 
@@ -89,14 +213,29 @@ func _has_effect(u: Node2D, id: String) -> bool:
 	return false
 
 func _is_action_blocked(u: Node2D) -> bool:
-	if u == null or not is_instance_valid(u): return false
-	if _is_devoured(u): return true
-	if u.has_method("list_effects"):
-		for e in u.call("list_effects"):
-			if typeof(e) != TYPE_DICTIONARY: continue
-			if bool(e.get("stun", false)): return true
-			if bool(e.get("skip_turn", false)): return true
-			if String(e.get("id","")) == "hypnosis": return true
+	if u == null or not is_instance_valid(u):
+		return false
+	if _is_devoured(u):
+		return true
+
+	var effs: Array = []
+	if u.has_method("get_effects"):
+		effs = u.call("get_effects")
+	elif u.has_variable("effects"):
+		effs = u.effects
+
+	for e in effs:
+		if typeof(e) != TYPE_DICTIONARY:
+			continue
+		var mods: Dictionary = e.get("mods", {})
+		if bool(mods.get("stun", false)):
+			return true
+		if bool(mods.get("skip_turn", false)):
+			return true
+		# бэкомпат по старым айдишникам
+		var eid := String(e.get("id", ""))
+		if eid == "hypnosis" or eid == "stun":
+			return true
 	return false
 
 func _apply_berit_recipe_if_any(user: Node2D, skill: Dictionary) -> Dictionary:
@@ -1248,6 +1387,167 @@ func _speed_less(a, b) -> bool:
 		return a.get_instance_id() < b.get_instance_id()
 	return _eff_speed(a) > _eff_speed(b)
 	
+# --- Салли: подмешать синие/красные слова и «золото» (ничего лишнего) ---
+func _sally_apply_words_and_gold(actor: Node2D, skill: Dictionary) -> Dictionary:
+	if actor == null or not is_instance_valid(actor): 
+		return skill
+	if String(actor.nick) != "Sally":
+		return skill
+
+	var desc_txt := String(skill.get("desc", skill.get("description", skill.get("text","")))).to_lower()
+	var words: Dictionary = actor.get_meta("sally_words", {})
+	var blue_w := String(words.get("blue","")).to_lower()
+	var red_w  := String(words.get("red","")).to_lower()
+
+	var has_blue := false
+	var has_red  := false
+	if blue_w != "" and desc_txt.findn(blue_w) != -1:
+		has_blue = true
+	if red_w != "" and desc_txt.findn(red_w) != -1:
+		has_red = true
+
+	# Красное: удвоить манакост
+	if has_red:
+		var cost = skill.get("costs", skill.get("cost", {}))
+		if typeof(cost) == TYPE_DICTIONARY:
+			var m0 := int(cost.get("mana", skill.get("mana_cost", 0)))
+			if m0 > 0:
+				cost["mana"] = m0 * 2
+				skill["costs"] = cost
+				if skill.has("mana_cost"):
+					skill.erase("mana_cost")
+		skill["__sally_red"] = true
+
+	# Синее: усиление из GameManager
+	if has_blue:
+		var enh := GameManager.get_sally_enhance(String(skill.get("name","")), "blue")
+		if typeof(enh) == TYPE_DICTIONARY and not enh.is_empty():
+			if enh.has("damage_mult"):    skill["damage_mult"]    = float(enh["damage_mult"])
+			if enh.has("heal_mult"):      skill["heal_mult"]      = float(enh["heal_mult"])
+			if enh.has("duration_bonus"): skill["duration_bonus"] = int(enh["duration_bonus"])
+			if enh.has("free_cost") and bool(enh["free_cost"]):
+				var c2 = skill.get("costs", {})
+				if typeof(c2) == TYPE_DICTIONARY:
+					c2["mana"] = 0
+					skill["costs"] = c2
+					if skill.has("mana_cost"):
+						skill.erase("mana_cost")
+		skill["__sally_blue"] = true
+
+	# «Золото»: если активна эйфория — золотой буст + 0 маны
+	if bool(actor.get_meta("sally_golden", false)):
+		var enh_g := GameManager.get_sally_enhance(String(skill.get("name","")), "gold")
+		if typeof(enh_g) == TYPE_DICTIONARY and not enh_g.is_empty():
+			if enh_g.has("damage_mult"):    skill["damage_mult"]    = float(enh_g["damage_mult"])
+			if enh_g.has("heal_mult"):      skill["heal_mult"]      = float(enh_g["heal_mult"])
+			if enh_g.has("duration_bonus"): skill["duration_bonus"] = int(enh_g["duration_bonus"])
+		var c_gold = skill.get("costs", {})
+		if typeof(c_gold) != TYPE_DICTIONARY:
+			c_gold = {}
+		c_gold["mana"] = 0
+		skill["costs"] = c_gold
+		if skill.has("mana_cost"):
+			skill.erase("mana_cost")
+		skill["__sally_gold"] = true
+
+	return skill
+
+
+# --- Берит: +1 синяя монета за КАЖДЫЕ суммарные 20 маны команды ---
+func _berit_award_team_mana_coins(actor: Node2D, mana_before: int) -> void:
+	var spent = max(0, mana_before - actor.mana)
+	if spent <= 0:
+		return
+	var berit: Node2D = null
+	for h in heroes:
+		if is_instance_valid(h) and String(h.nick) == "Berit":
+			berit = h
+			break
+	if berit == null:
+		return
+	var acc = int(berit.get_meta("team_mana_spent_accum", 0)) + spent
+	while acc >= 20:
+		if berit.has_method("add_coin"):
+			berit.add_coin("blue")
+		acc -= 20
+	berit.set_meta("team_mana_spent_accum", acc)
+
+
+# Заменить существующую версию
+func _sally_after_cast(actor: Node2D, skill: Dictionary, mana_before: int) -> void:
+	if actor == null or String(actor.nick) != "Sally":
+		return
+
+	# --- мана-рефанд: ТОЛЬКО синие, и НИКОГДА при красном/золотом ---
+	var refund_ok := bool(skill.get("__sally_blue", false)) \
+		and not bool(skill.get("__sally_red", false)) \
+		and not bool(skill.get("__sally_gold", false))
+	if refund_ok:
+		var spent = max(0, mana_before - actor.mana)
+		if spent > 0:
+			actor.mana = min(actor.max_mana, actor.mana + spent * 2)
+		if DEBUG_SALLY and String(actor.nick) == "Sally":
+			var will_refund := 0
+			if refund_ok and spent > 0:
+				will_refund = spent * 2
+			print("[SALLY][refund] mana_before=", mana_before, " after_pay=", actor.mana, " spent=", spent, " refund=", will_refund,
+				  " flags{blue=", bool(skill.get("__sally_blue", false)),
+				  " red=", bool(skill.get("__sally_red", false)),
+				  " gold=", bool(skill.get("__sally_gold", false)), "}")
+
+	# --- вдохновение ---
+	var mech: Dictionary = actor.mechanic
+	mech["id"] = "inspiration"
+	mech["name"] = "Вдохновение"
+	mech["max"] = 3
+	var v := int(mech.get("value", 0))
+	var v0 := int(mech.get("value", 0))   # до изменений
+	# +1 стак даём только за «чисто синее» (если одновременно красное — без прироста)
+	if bool(skill.get("__sally_blue", false)) and not bool(skill.get("__sally_red", false)):
+		v = min(3, v + 1)
+
+	# «золото» тратит все стаки и выключает эйфорию
+	if bool(skill.get("__sally_gold", false)):
+		v = 0
+		actor.set_meta("sally_golden", false)
+
+	mech["value"] = v
+	actor.mechanic = mech
+	
+	# авто-эйфория при 3 стаках (для следующего действия)
+	actor.set_meta("sally_golden", v >= 3)
+	if DEBUG_SALLY and String(actor.nick) == "Sally":
+		print("[SALLY][inspiration] before=", v0, " after=", v, " golden=", bool(actor.get_meta("sally_golden", false)))
+	
+# Делает глубокую копию умения, сбрасывает флаги и восстанавливает стоимость из __base_costs (если есть)
+func _prepare_skill_for_cast(actor: Node, skill_in: Dictionary) -> Dictionary:
+	var s := skill_in.duplicate(true)
+
+	# Сброс временных флагов
+	if s.has("__sally_blue"):
+		s.erase("__sally_blue")
+	if s.has("__sally_red"):
+		s.erase("__sally_red")
+	if s.has("__sally_gold"):
+		s.erase("__sally_gold")
+
+	# Восстановление базовой стоимости
+	var base_costs = s.get("__base_costs", null)
+	if base_costs == null:
+		# Если ещё не сохранена база, считаем её из текущих полей (единоразово)
+		var costs = s.get("costs", {})
+		var mana_cost := int(costs.get("mana", s.get("mana_cost", 0)))
+		base_costs = {"mana": mana_cost}
+		s["__base_costs"] = base_costs
+
+	# Принудительно выставляем текущие costs из базы
+	var mc := int(base_costs.get("mana", 0))
+	s["costs"] = {"mana": mc}
+	if s.has("mana_cost"):
+		s.erase("mana_cost") # чтобы не было дублирования форматов
+
+	return s
+
 func _ready() -> void:
 	$UI/ActionPanel.connect("action_selected", Callable(self, "_on_action_selected"))
 	action_panel.hide()
@@ -1293,7 +1593,63 @@ func rebuild_turn_queue() -> void:
 		names.append("%s(%s spd=%d)" % [c.nick, c.team, int(c.speed)])
 	print("Очередь старт:", names)
 	
-	
+# Накопитель командных трат маны (герои)
+var _team_mana_spent_heroes: int = 0
+
+# --- SALLY: helpers for Inspiration ---
+func _get_sally_insp(actor: Node) -> int:
+	var v := 0
+	if actor == null or not is_instance_valid(actor):
+		return 0
+	# из mechanic
+	var mech = actor.mechanic
+	if typeof(mech) == TYPE_DICTIONARY and mech.has("inspiration"):
+		var node = mech["inspiration"]
+		v = int(node.get("value", 0))
+	# из meta как запасной источник
+	var meta_v := int(actor.get_meta("sally_insp", 0))
+	if v == 0 and meta_v > 0:
+		v = meta_v
+	return v
+
+func _set_sally_insp(actor: Node, v: int) -> void:
+	if actor == null or not is_instance_valid(actor):
+		return
+	var mech = actor.mechanic
+	if typeof(mech) != TYPE_DICTIONARY:
+		mech = {}
+	var node = mech.get("inspiration", {"id":"inspiration", "value":0, "max":3})
+	var max_v := int(node.get("max", 3))
+	if v < 0:
+		v = 0
+	if v > max_v:
+		v = max_v
+	node["value"] = v
+	mech["inspiration"] = node
+	actor.mechanic = mech
+	actor.set_meta("sally_insp", v)            # дублируем в meta на случай потери узла
+	actor.set_meta("sally_golden", v >= max_v) # флаг «золота»
+	if DEBUG_SALLY and String(actor.nick) == "Sally":
+		print("[SALLY][inspiration] set -> ", v, "/", max_v, " golden=", v >= max_v)
+
+
+func _award_berit_by_team_mana(spent: int, team: String) -> void:
+	if spent <= 0:
+		return
+	# Считаем только траты команды героев (если нужно — легко расширить на врагов)
+	if String(team) != "hero":
+		return
+
+	_team_mana_spent_heroes += spent
+	while _team_mana_spent_heroes >= 20:
+		_team_mana_spent_heroes -= 20
+		# ищем Берита и выдаём синюю монету
+		for h in heroes:
+			if is_instance_valid(h) and String(h.nick) == "Berit":
+				if h.has_method("add_coin"):
+					h.call("add_coin", "blue")
+				break
+
 func _on_action_selected(action_type: String, actor: Node2D, data):
 	if _is_acting: return
 	action_panel.hide()
@@ -1326,19 +1682,91 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 				_is_acting = false
 				end_turn()
 			, "single")
-
 		"skill":
-			var skill: Dictionary = data if typeof(data) == TYPE_DICTIONARY else {}
-			var is_magic := String(skill.get("type","")) == "magic"
-			var base_dmg := int(skill.get("damage", actor.attack))
-			var eff_tgt: Array = skill.get("effects_to_targets", [])
+			# всегда работаем с КОПИЕЙ, иначе цены «залипают» в abilities героя
+			var skill: Dictionary = (data.duplicate(true) if typeof(data) == TYPE_DICTIONARY else {})
+
+			# убираем временные флаги прошлого каста (на всякий случай)
+			if skill.has("__sally_blue"):    skill.erase("__sally_blue")
+			if skill.has("__sally_red"):     skill.erase("__sally_red")
+			if skill.has("__sally_gold"):    skill.erase("__sally_gold")
+			if skill.has("__sally_refunded"):skill.erase("__sally_refunded")
+
+			# восстанавливаем БАЗОВУЮ цену перед любыми цветными модификациями
+			var base_costs = skill.get("__base_costs", null)
+			if typeof(base_costs) == TYPE_DICTIONARY:
+				var costs = skill.get("costs", {})
+				if typeof(costs) != TYPE_DICTIONARY:
+					costs = {}
+				costs["mana"] = int(base_costs.get("mana", costs.get("mana", skill.get("mana_cost", 0))))
+				skill["costs"] = costs
+				if skill.has("mana_cost"):
+					skill.erase("mana_cost")
+
 			_apply_self_effects_if_any(actor, skill)
+
+			# --- Салли: применить синие/красные слова (по описанию) ---
+			if String(actor.nick) == "Sally":
+				var desc_txt := String(skill.get("desc", skill.get("description", skill.get("text","")))).to_lower()
+				var words: Dictionary = actor.get_meta("sally_words", {})
+				var blue_w := String(words.get("blue","")).to_lower()
+				var red_w  := String(words.get("red","")).to_lower()
+
+				var has_blue := (blue_w != "" and desc_txt.findn(blue_w) != -1)
+				var has_red  := (red_w  != "" and desc_txt.findn(red_w)  != -1)
+
+				# Красное: удвоить манакост, если есть
+				if has_red:
+					var cost = skill.get("costs", skill.get("cost", {}))
+					if typeof(cost) == TYPE_DICTIONARY:
+						var m0 := int(cost.get("mana", skill.get("mana_cost", 0)))
+						if m0 > 0:
+							cost["mana"] = m0 * 2
+							skill["costs"] = cost
+							if skill.has("mana_cost"):
+								skill.erase("mana_cost")
+					skill["__sally_red"] = true
+
+				# Синее: подмешать усиление из GameManager (только доступные ключи)
+				if has_blue:
+					var enh := GameManager.get_sally_enhance(String(skill.get("name","")), "blue")
+					if typeof(enh) == TYPE_DICTIONARY and not enh.is_empty():
+						if enh.has("damage_mult"):    skill["damage_mult"]    = float(enh["damage_mult"])
+						if enh.has("heal_mult"):      skill["heal_mult"]      = float(enh["heal_mult"])
+						if enh.has("duration_bonus"): skill["duration_bonus"] = int(enh["duration_bonus"])
+						if enh.has("free_cost") and bool(enh["free_cost"]):
+							var c2 = skill.get("costs", {})
+							if typeof(c2) == TYPE_DICTIONARY:
+								c2["mana"] = 0
+								skill["costs"] = c2
+								if skill.has("mana_cost"):
+									skill.erase("mana_cost")
+					skill["__sally_blue"] = true
+
+				# Если «золото» активно — подмешать золотое усиление и обнулить манакост
+				if bool(actor.get_meta("sally_golden", false)):
+					var enh_g := GameManager.get_sally_enhance(String(skill.get("name","")), "gold")
+					if typeof(enh_g) == TYPE_DICTIONARY and not enh_g.is_empty():
+						if enh_g.has("damage_mult"):    skill["damage_mult"]    = float(enh_g["damage_mult"])
+						if enh_g.has("heal_mult"):      skill["heal_mult"]      = float(enh_g["heal_mult"])
+						if enh_g.has("duration_bonus"): skill["duration_bonus"] = int(enh_g["duration_bonus"])
+					var c_gold = skill.get("costs", {})
+					if typeof(c_gold) != TYPE_DICTIONARY: c_gold = {}
+					c_gold["mana"] = 0
+					skill["costs"] = c_gold
+					if skill.has("mana_cost"): skill.erase("mana_cost")
+					skill["__sally_gold"] = true
+			# --- конец блока Салли ---
 
 			# — Попытка усиления Берита ДО выбора ветки —
 			if String(actor.nick) == "Berit":
 				print("[BERIT] try recipe for '", String(skill.get("name","")), "' coins=", (actor.ether_coins if actor and actor.has_method("coins_count") else []))
 				skill = _maybe_apply_berit_enhance(actor, skill)
 				if skill.has("__berit_enhanced"): print("[BERIT] enhanced=true")
+				
+			var is_magic := String(skill.get("type","")) == "magic"
+			var base_dmg := int(skill.get("damage", actor.attack))
+			var eff_tgt: Array = skill.get("effects_to_targets", [])
 
 			var s_target := String(skill.get("target",""))
 			if s_target == "single_enemy":
@@ -1351,6 +1779,7 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 					if not _can_pay_cost(actor, skill):
 						show_player_options(actor)
 						return
+					var mana_before = actor.mana
 					_pay_cost(actor, skill)
 
 					var tgt: Node2D = targets[0]
@@ -1363,8 +1792,29 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 						else:
 							await _do_melee_single(actor, tgt, max(1, base_dmg), eff_tgt)
 						_is_acting = false
+
+					# ADD: сколько реально потрачено маны (до возможного возврата)
+					var spent_for_award = max(0, mana_before - actor.mana)
+					_award_berit_by_team_mana(spent_for_award, actor.team)  # ADD
+
+					# возврат маны Салли — только «синее» и не «красное/золото», и только один раз
+					if String(actor.nick) == "Sally" \
+					and bool(skill.get("__sally_blue", false)) \
+					and not bool(skill.get("__sally_red", false)) \
+					and not bool(skill.get("__sally_gold", false)) \
+					and not bool(skill.get("__sally_refunded", false)):
+						if spent_for_award > 0:
+							actor.mana = min(actor.max_mana, actor.mana + spent_for_award * 2)
+						skill["__sally_refunded"] = true   # ADD: защита от дубля
+
+					# пост-обновление вдохновения (механика + мета) / сброс «золота»
+					# пост-обновление вдохновения
+					_sally_apply_inspiration_after_cast(actor, skill)
+
+
 					end_turn()
 				, "single")
+
 			elif s_target == "all_enemies":
 				var list_all: Array[Node2D] = []
 				for e in enemies:
@@ -1377,6 +1827,7 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 					if not _can_pay_cost(actor, skill):
 						show_player_options(actor)
 						return
+					var mana_before = actor.mana
 					_pay_cost(actor, skill)
 
 					if skill.has("qte"):
@@ -1388,11 +1839,31 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 						else:
 							await _do_melee_aoe(actor, max(1, base_dmg), eff_tgt)
 						_is_acting = false
+
+					# ADD: трата маны -> монеты Бериту
+					var spent_for_award = max(0, mana_before - actor.mana)
+					_award_berit_by_team_mana(spent_for_award, actor.team)  # ADD
+
+					# возврат маны Салли — только «синее» и не «красное/золото», и только один раз
+					if String(actor.nick) == "Sally" \
+					and bool(skill.get("__sally_blue", false)) \
+					and not bool(skill.get("__sally_red", false)) \
+					and not bool(skill.get("__sally_gold", false)) \
+					and not bool(skill.get("__sally_refunded", false)):
+						if spent_for_award > 0:
+							actor.mana = min(actor.max_mana, actor.mana + spent_for_award * 2)
+						skill["__sally_refunded"] = true  # ADD
+
+					# пост-обновление вдохновения
+					_sally_apply_inspiration_after_cast(actor, skill)
+
 					end_turn()
 				, "all")
+
 			elif s_target == "self":
 				if not _can_pay_cost(actor, skill):
 					show_player_options(actor); return
+				var mana_before = actor.mana
 				_pay_cost(actor, skill)
 				if skill.has("qte"):
 					await _perform_with_qte(actor, [actor], skill)
@@ -1400,6 +1871,24 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 					_is_acting = true
 					await _do_support(actor, actor, skill)
 					_is_acting = false
+
+				# ADD: трата маны -> монеты Бериту
+				var spent_for_award = max(0, mana_before - actor.mana)
+				_award_berit_by_team_mana(spent_for_award, actor.team)  # ADD
+
+				# возврат маны Салли — только «синее» и не «красное/золото», и только один раз
+				if String(actor.nick) == "Sally" \
+				and bool(skill.get("__sally_blue", false)) \
+				and not bool(skill.get("__sally_red", false)) \
+				and not bool(skill.get("__sally_gold", false)) \
+				and not bool(skill.get("__sally_refunded", false)):
+					if spent_for_award > 0:
+						actor.mana = min(actor.max_mana, actor.mana + spent_for_award * 2)
+					skill["__sally_refunded"] = true  # ADD
+
+				# пост-обновление вдохновения
+				_sally_apply_inspiration_after_cast(actor, skill)
+
 				end_turn()
 
 			elif s_target == "single_ally":
@@ -1423,6 +1912,7 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 					if not _can_pay_cost(actor, skill):
 						show_player_options(actor)
 						return
+					var mana_before = actor.mana
 					_pay_cost(actor, skill)
 
 					var tgt_local: Node2D = targets[0]
@@ -1430,8 +1920,27 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 					_is_acting = true
 					await _do_support(actor, tgt_local, skill)  # ← передаём весь словарь умения
 					_is_acting = false
+
+					# ADD: трата маны -> монеты Бериту
+					var spent_for_award = max(0, mana_before - actor.mana)
+					_award_berit_by_team_mana(spent_for_award, actor.team)  # ADD
+
+					# возврат маны Салли — только «синее» и не «красное/золото», и только один раз
+					if String(actor.nick) == "Sally" \
+					and bool(skill.get("__sally_blue", false)) \
+					and not bool(skill.get("__sally_red", false)) \
+					and not bool(skill.get("__sally_gold", false)) \
+					and not bool(skill.get("__sally_refunded", false)):
+						if spent_for_award > 0:
+							actor.mana = min(actor.max_mana, actor.mana + spent_for_award * 2)
+						skill["__sally_refunded"] = true  # ADD
+
+					# пост-обновление вдохновения
+					_sally_apply_inspiration_after_cast(actor, skill)
+
 					end_turn()
 				, "single")
+
 			elif s_target == "all_allies":
 				var group: Array[Node2D] = []
 				if actor.team == "hero":
@@ -1450,6 +1959,7 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 				if not _can_pay_cost(actor, skill):
 					show_player_options(actor)
 					return
+				var mana_before = actor.mana
 				_pay_cost(actor, skill)
 
 				if skill.has("qte"):
@@ -1480,6 +1990,24 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 					await _wait_anim_end(ap, clip, 1.2)
 					_play_if_has(ap, "idle")
 					_is_acting = false
+
+				# ADD: трата маны -> монеты Бериту
+				var spent_for_award = max(0, mana_before - actor.mana)
+				_award_berit_by_team_mana(spent_for_award, actor.team)  # ADD
+
+				# возврат маны Салли — только «синее» и не «красное/золото», и только один раз
+				if String(actor.nick) == "Sally" \
+				and bool(skill.get("__sally_blue", false)) \
+				and not bool(skill.get("__sally_red", false)) \
+				and not bool(skill.get("__sally_gold", false)) \
+				and not bool(skill.get("__sally_refunded", false)):
+					if spent_for_award > 0:
+						actor.mana = min(actor.max_mana, actor.mana + spent_for_award * 2)
+					skill["__sally_refunded"] = true  # ADD
+
+				# пост-обновление вдохновения
+				_sally_apply_inspiration_after_cast(actor, skill)
+
 				end_turn()
 
 		"item":
@@ -1793,6 +2321,11 @@ func update_turn_queue_display():
 
 func show_player_options(actor: Node2D) -> void:
 	current_actor = actor
+	if String(actor.nick) == "Sally" and actor.has_effect("psychopathy"):
+		action_panel.hide()
+		await _sally_psycho_auto(actor)
+		end_turn()
+		return
 	action_panel.show_main_menu(actor)
 
 	var cam := get_viewport().get_camera_2d()
@@ -2366,7 +2899,54 @@ func _build_turn_icons_if_needed() -> void:
 		icon.texture = load(path) if ResourceLoader.exists(path) else load("res://Assets/icons/characters/placeholder.png")
 		turn_panel.add_child(icon)
 		char_to_icon[ch] = icon
+		
 
+func _sally_sync_inspiration_ui() -> void:
+	# Находим Салли среди героев и дёргаем UI-механику из meta
+	for h in heroes:
+		if is_instance_valid(h) and String(h.nick) == "Sally":
+			var v := int(h.get_meta("sally_insp", 0))
+			# Поддерживаем «золото» как флаг в meta
+			h.set_meta("sally_golden", v >= 3)
+			# Обновляем отображение механики на карточке
+			if h.has_method("set_mechanic"):
+				h.call("set_mechanic", "inspiration", "Вдохновение", 0, 3, v)
+			elif h.has_method("set_mechanic_value"):
+				h.call("set_mechanic_value", v)
+			if DEBUG_SALLY:
+				print("[SALLY][sync] meta=", v, " golden=", bool(h.get_meta("sally_golden", false)))
+			return
+
+func _sally_apply_inspiration_after_cast(actor: Node, skill: Dictionary) -> void:
+	if String(actor.nick) != "Sally":
+		return
+
+	# Инициализируем механику, если её ещё нет/не та
+	var mech: Dictionary = actor.get_mechanic()
+	if String(mech.get("id","")) != "inspiration":
+		# создаём «каркас», значение берём если вдруг уже было
+		var init_val := int(mech.get("value", 0))
+		actor.mechanic = {"id":"inspiration","name":"Вдохновение","value":init_val,"max":3}
+		mech = actor.get_mechanic()
+
+	var v := int(mech.get("value", 0))
+	var v0 := v
+
+	# +1 только за «синее» и если НЕ «красное»
+	if bool(skill.get("__sally_blue", false)) and not bool(skill.get("__sally_red", false)):
+		v = min(3, v + 1)
+
+	# «золотое» умение сбрасывает стаки
+	if bool(skill.get("__sally_gold", false)):
+		v = 0
+		actor.set_meta("sally_golden", false)
+
+	# ВАЖНО: меняем через API, чтобы UI/карточка подхватили (signal mechanic_changed)
+	actor.set_meta("sally_insp", v)
+	actor.set_meta("sally_golden", v >= 3)
+
+	if DEBUG_SALLY:
+		print("[SALLY][inspiration] before=", v0, " after=", v, " golden=", bool(actor.get_meta("sally_golden", false)))
 
 
 func _can_pay_cost(user: Node2D, data: Dictionary) -> bool:
@@ -2382,7 +2962,10 @@ func _can_pay_cost(user: Node2D, data: Dictionary) -> bool:
 	var hp := int(costs.get("hp", 0))
 	var mp := int(costs.get("mana", 0))
 	var st := int(costs.get("stamina", 0))
-
+	# --- DEBUG: логируем проверку оплаты для Салли ---
+	if DEBUG_SALLY and String(user.nick) == "Sally":
+		var dbg_cost := {"hp": hp, "mana": mp, "stamina": st}
+		print("[SALLY][can_pay] mana=", user.mana, "/", user.max_mana, " cost=", dbg_cost)
 	if hp > 0 and user.health <= hp: return false    # не даём умереть оплатой
 	if mp > 0 and user.mana   <  mp: return false
 	if st > 0 and user.stamina < st: return false
@@ -2408,7 +2991,7 @@ func _pay_cost(user: Node2D, data: Dictionary) -> void:
 	var spent_hp  := int(costs.get("hp", 0))
 	var spent_mp  := int(costs.get("mana", 0))
 	var spent_sta := int(costs.get("stamina", 0))
-
+	var __sally_before_mana = user.mana
 	# 3) Применяем
 	if spent_hp > 0:
 		user.health  = max(1, user.health  - spent_hp)   # не умираем оплатой
@@ -2416,7 +2999,9 @@ func _pay_cost(user: Node2D, data: Dictionary) -> void:
 		user.mana    = max(0, user.mana    - spent_mp)
 	if spent_sta > 0:
 		user.stamina = max(0, user.stamina - spent_sta)
-
+		# --- DEBUG: факт оплаты ---
+	if DEBUG_SALLY and String(user.nick) == "Sally" and spent_mp > 0:
+		print("[SALLY][pay_cost] spent_mp=", spent_mp, " before=", __sally_before_mana, " after=", user.mana)
 	# 4) Синие монеты Бериту: суммируем всю потраченную героями ману, если в партии есть Sally
 	if spent_mp > 0 and user.team == "hero" and _party_has("Sally"):
 		_mana_spent_pool += spent_mp
@@ -2468,8 +3053,27 @@ func process_turn():
 	if _battle_over:
 		return
 	var ch: Node2D = _pick_next_actor()
+	_sally_sync_inspiration_ui()
 	if _is_action_blocked(ch):
-		print("[TURN] ", ch.nick, " не может ходить (гипноз/стан/съеден) — пропуск.")
+		# DoT + универсальные моды (например, mana_drain_per_turn)
+		if ch.has_method("get_effects"):
+			var arr: Array = ch.call("get_effects")
+			for e in arr:
+				if typeof(e) != TYPE_DICTIONARY:
+					continue
+				# DoT
+				if e.has("dot"):
+					ch.health = max(0, ch.health - int(e.get("dot", 0)))
+				# универсальный дрен маны по модификатору
+				var mods: Dictionary = e.get("mods", {})
+				if mods.has("mana_drain_per_turn"):
+					ch.mana = max(0, ch.mana - int(mods.get("mana_drain_per_turn", 0)))
+
+		# Тик длительностей (чтобы стан и пр. сходили)
+		if ch.has_method("tick_effects_duration"):
+			ch.call("tick_effects_duration")
+
+		# Если умер от DoT — просто завершаем ход (дальнейшая логика и так разрулит)
 		end_turn()
 		return
 
@@ -2487,7 +3091,39 @@ func process_turn():
 		return
 	var t0 := Time.get_ticks_msec()
 	print("[TURN] picked ", ch.nick, " at ", Time.get_ticks_msec()-t0, "ms from start")
+	# ── Sally: восстановить value из meta в саму механику до UI/кнопок
+	if String(ch.nick) == "Sally":
+		var v := int(ch.get_meta("sally_insp", 0))
+		var mech = ch.mechanic
+		if typeof(mech) != TYPE_DICTIONARY: mech = {}
+		mech["id"] = "inspiration"
+		mech["name"] = "Вдохновение"
+		mech["max"] = 3
+		mech["value"] = clamp(v, 0, 3)
+		ch.mechanic = mech
+		if DEBUG_SALLY:
+			print("[SALLY][turn_begin] restore=", v)
 
+	if is_instance_valid(current_actor) and String(current_actor.nick) == "Sally":
+		var mech = current_actor.mechanic
+		if typeof(mech) != TYPE_DICTIONARY:
+			mech = {}
+
+		var has_insp = typeof(mech) == TYPE_DICTIONARY and mech.has("inspiration")
+		if not has_insp:
+			var v_meta := int(current_actor.get_meta("sally_insp", 0))
+			if v_meta > 0:
+				mech["inspiration"] = {"id":"inspiration","name":"Вдохновение","value":v_meta,"max":3}
+				current_actor.mechanic = mech
+				if DEBUG_SALLY:
+					print("[SALLY][insp_restore] restored_from_meta=", v_meta)
+
+		# чисто для лога текущего значения (без перезаписи!)
+		var v_dbg := 0
+		if typeof(current_actor.mechanic) == TYPE_DICTIONARY and current_actor.mechanic.has("inspiration"):
+			v_dbg = int(current_actor.mechanic["inspiration"].get("value", 0))
+		if DEBUG_SALLY:
+			print("[SALLY][turn_begin] insp=", v_dbg)
 	turn_queue = _panel_order_with_current_first(ch)
 	var t1 := Time.get_ticks_msec()
 	await _animate_stepwise_to(turn_queue)
@@ -2922,7 +3558,15 @@ func perform_action(user: Node2D, action: Dictionary) -> void:
 	if not _can_pay_cost(user, action):
 		print("[ACT] ", user.nick, " не может оплатить действие ", name_dbg)
 		return
+
+	var __mana_before_pay = user.mana
+	if DEBUG_SALLY and String(user.nick) == "Sally":
+		_sally_dbg("before_pay", user, action, {"mana_before": __mana_before_pay})
+
 	_pay_cost(user, action)
+
+	if DEBUG_SALLY and String(user.nick) == "Sally":
+		_sally_dbg("after_pay", user, action, {"mana_before": __mana_before_pay, "delta": user.mana - __mana_before_pay})
 
 	# ───────── QTE/тип действия ─────────
 	var has_qte := false
