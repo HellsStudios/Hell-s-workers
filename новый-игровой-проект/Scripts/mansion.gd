@@ -2,16 +2,81 @@ extends Node2D
 
 #var current_day : int = 1  # текущий день, начинаем с 1
 
-func _on_room_1_input_event(viewport:Node, event:InputEvent, shape_idx:int) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+# ====== DBG: мышь/ввод после закрытия попапа ======
+var DBG_LOG := true
+var _dbg_watch_active := false
+var _dbg_watch_left := 0
+var _dbg_reason := ""
+var _dbg_motion_count := 0
 
-		var panel := get_node("/root/Mansion/Room1PopupPanel")                # убедитесь, что путь верный!
-		panel.position = get_node("/root/Mansion/Camera2D/Room1").global_position - get_viewport().get_canvas_transform().origin
+var _input_quarantine_t := 0.0
+var _cam_proc_prev := true
+var _cam_phys_prev := true
+
+func _start_input_quarantine(sec: float = 0.30) -> void:
+	# глушим мир на sec секунд
+	_input_quarantine_t = max(_input_quarantine_t, sec)
+	if $Camera2D:
+		_cam_proc_prev = $Camera2D.is_processing()
+		_cam_phys_prev = $Camera2D.is_physics_processing()
+		$Camera2D.set_process(false)
+		$Camera2D.set_physics_process(false)
+
+func _dbg(msg: String) -> void:
+	if DBG_LOG:
+		print("[MANSION][DBG] ", msg)
+
+func _dbg_btns_state(event: InputEvent = null) -> String:
+	var pos := get_viewport().get_mouse_position()
+	var l := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	var r := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+	var m := Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE)
+
+	var extra := ""
+	if event is InputEventMouseMotion:
+		extra = " motion_mask=%d rel=%s" % [event.button_mask, event.relative]
+	elif event is InputEventMouseButton:
+		extra = " ev_btn=%d pressed=%s dbl=%s pos=%s" % [event.button_index, event.pressed, event.double_click, event.position]
+
+	return "pos=%s L=%s R=%s M=%s%s" % [str(pos), str(l), str(r), str(m), extra]
+
+func _dbg_start_watch(reason: String, frames := 45) -> void:
+	_dbg_reason = reason
+	_dbg_watch_active = true
+	_dbg_watch_left = frames
+	_dbg_motion_count = 0
+	_dbg("WATCH start (%s), frames=%d | %s" % [_dbg_reason, frames, _dbg_btns_state()])
+
+func _dbg_stop_watch() -> void:
+	_dbg("WATCH stop  (%s). motions=%d | %s" % [_dbg_reason, _dbg_motion_count, _dbg_btns_state()])
+	_dbg_watch_active = false
+	_dbg_reason = ""
+	_dbg_watch_left = 0
+# ====== /DBG ======
+
+func _process(delta: float) -> void:
+	if _input_quarantine_t > 0.0:
+		_input_quarantine_t -= delta
+		if _input_quarantine_t <= 0.0 and $Camera2D:
+			$Camera2D.set_process(_cam_proc_prev)
+			$Camera2D.set_physics_process(_cam_phys_prev)
+
+func _ready() -> void:
+	set_process(true)  # нужно для таймового логирования
+	# ... остальное как у тебя было ...
+
+
+func _on_room_1_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		$Camera2D.set_drag_enabled(false)                # ← ВЫКЛ. drag
+		get_viewport().set_input_as_handled()            # ← стопим всплытие в _unhandled_input камеры
+
+		var panel := $Room1PopupPanel
+		panel.position = $Camera2D/Room1.global_position - get_viewport().get_canvas_transform().origin
 		panel.size = Vector2i(0, 0)
 		panel.visible = true
-
 		var tw := create_tween()
-		tw.tween_property(panel,"size",Vector2i(220, 140),0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(panel, "size", Vector2i(220, 140), 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func _on_room_2_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:   if event is InputEventMouseButton and event.pressed:
@@ -21,6 +86,27 @@ func _on_room_2_input_event(viewport: Node, event: InputEvent, shape_idx: int) -
 func _on_room_3_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:    if event is InputEventMouseButton and event.pressed:
 		print("Комната 3 нажата")
 
+func _release_mouse_buttons() -> void:
+	var pos := get_viewport().get_mouse_position()
+	for b in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
+		if Input.is_mouse_button_pressed(b):
+			var ev := InputEventMouseButton.new()
+			ev.button_index = b
+			ev.pressed = false
+			ev.position = pos
+			Input.parse_input_event(ev)
+			
+func _on_button_exit_pressed() -> void:
+	var panel := $Room1PopupPanel
+	if panel.get_meta("closing", false):
+		return
+	panel.set_meta("closing", true)
+
+	$Camera2D.cancel_drag()               # ← на всякий
+
+	var tw := create_tween()
+	tw.tween_property(panel, "size", Vector2i(0, 0), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tw.tween_callback(Callable(panel, "hide"))
 
 func _on_NextPhaseButton_pressed():
 	GameManager.current_phase += 1
@@ -46,20 +132,18 @@ func update_room_states():
 				lamp.visible = false
 
 func _on_room_1_popup_panel_popup_hide() -> void:
-	$Room1PopupPanel.set_meta("closing", false) # Replace with function body.
+	$Room1PopupPanel.set_meta("closing", false)
+	$Camera2D.set_drag_enabled(true)      # ← ВКЛ. drag обратно
 
 
-func _on_button_exit_pressed() -> void:
-	var panel := get_node("/root/Mansion/Room1PopupPanel")   
-	# если уже запущено закрытие — не стартуем повторно
-	if panel.get_meta("closing", false):
+func _unhandled_input(event: InputEvent) -> void:
+	# Глушим любые мышиные события, пока идёт карантин
+	if _input_quarantine_t > 0.0 and (event is InputEventMouseMotion or event is InputEventMouseButton):
+		get_viewport().set_input_as_handled()
 		return
-	panel.set_meta("closing", true)
 
-	# обратная анимация размера
-	var tw := create_tween()
-	tw.tween_property(panel, "size", Vector2i(0, 0), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
-
-	# когда Tween закончится → hide()   (popup_hide стрельнёт сам)
-	tw.tween_callback(Callable(panel, "hide")) # Replace with function body.
-	
+	# Закрытие по ESC (тоже с карантином)
+	if event.is_action_pressed("ui_cancel") and $Room1PopupPanel.visible:
+		_start_input_quarantine(0.30) # длина твоей анимации 0.25с + запас
+		_on_button_exit_pressed()
+		get_viewport().set_input_as_handled()
