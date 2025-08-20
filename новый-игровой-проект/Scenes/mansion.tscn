@@ -144,6 +144,25 @@ offset_right = 58.0
 offset_bottom = 58.0
 icon = SubResource("GradientTexture2D_exq5i")
 
+[node name="TopBar" type="HBoxContainer" parent="UI"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -20.0
+offset_right = 20.0
+offset_bottom = 40.0
+grow_horizontal = 2
+
+[node name="ManageButton" type="Button" parent="UI/TopBar"]
+layout_mode = 2
+text = "Управление"
+
+[node name="Control" type="Control" parent="UI/TopBar"]
+layout_mode = 2
+
+[node name="ManagementMenu" type="PopupPanel" parent="UI"]
+size = Vector2i(900, 560)
+
 [connection signal="input_event" from="Camera2D/Room2" to="." method="_on_room_2_input_event"]
 [connection signal="input_event" from="Camera2D/Room3" to="." method="_on_room_3_input_event"]
 [connection signal="input_event" from="Camera2D/Room1" to="." method="_on_room_1_input_event"]
