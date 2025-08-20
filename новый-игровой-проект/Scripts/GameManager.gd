@@ -27,6 +27,49 @@ var EFFECTS_DB: Dictionary = {}   # id -> прототип эффекта
 
 static var _sally_words_pool: Array = []
 
+const DANTE_ENHANCE_PATH := "res://data/dante_enhance.json"
+
+# GameManager.gd (добавь к полям одно из верхних мест)
+var dante_enhance: Dictionary = {}
+var _dante_loaded := false
+
+func load_dante_enhance(json_path: String = "res://data/dante_enhance.json") -> void:
+	if _dante_loaded:
+		return
+	_dante_loaded = true
+
+	var data_str := ""
+	if FileAccess.file_exists(json_path):
+		data_str = FileAccess.get_file_as_string(json_path)
+	else:
+		var alt_path := "user://dante_enhance.json"
+		if FileAccess.file_exists(alt_path):
+			data_str = FileAccess.get_file_as_string(alt_path)
+
+	if data_str == "":
+		print("[DANTE] dante_enhance.json не найден")
+		dante_enhance = {}
+		return
+
+	var parsed = JSON.parse_string(data_str)
+	if typeof(parsed) == TYPE_DICTIONARY:
+		dante_enhance = parsed
+	else:
+		print("[DANTE] Ошибка парсинга dante_enhance.json")
+		dante_enhance = {}
+
+# Геттер порога заряда для усиленного варианта; на вход — словарь навыка
+func get_dante_charge_cost(skill: Dictionary) -> int:
+	load_dante_enhance()
+	var name := String(skill.get("name",""))
+	if name == "" or dante_enhance.is_empty() or not dante_enhance.has(name):
+		return -1
+	var entry = dante_enhance[name]
+	var consume = entry.get("consume", {})
+	if typeof(consume) != TYPE_DICTIONARY:
+		return -1
+	return int(consume.get("charge", -1))
+
 static func get_sally_words_pool() -> Array:
 	if _sally_words_pool.size() > 0:
 		return _sally_words_pool
@@ -49,6 +92,15 @@ static func get_sally_words_pool() -> Array:
 		_sally_words_pool = ["кровь","любовь","ветер","тишина","гнев","пепел","шёпот","золото","снег","вино"]
 
 	return _sally_words_pool
+	
+func get_dante_enhance_block(skill_name: String) -> Dictionary:
+	load_dante_enhance()
+	if skill_name == "" or dante_enhance.is_empty():
+		return {}
+	if not dante_enhance.has(skill_name):
+		return {}
+	var entry = dante_enhance[skill_name]
+	return entry.get("enhance", {})
 
 
 func load_effects_db() -> void:
@@ -99,6 +151,17 @@ func _ensure_sally_enh_loaded() -> void:
 				_sally_enh_cache = {}
 	else:
 		_sally_enh_cache = {}
+		
+func get_dante_charge(h: Node) -> int:
+	if h == null:
+		return 0
+	var v := int(h.get_meta("dante_charge", 50))
+	return clampi(v, 0, 100)
+
+func set_dante_charge(h: Node, v: int) -> void:
+	if h == null:
+		return
+	h.set_meta("dante_charge", clampi(int(v), 0, 100))
 
 # ── ДОБАВИТЬ: публичный геттер «как у Берита» ────────────────────────
 func get_sally_enhance(skill_name: String, mode: String) -> Dictionary:
@@ -158,6 +221,7 @@ func _ready() -> void:
 	load_items_db("res://Data/items.json") 
 	load_enemies_db("res://Data/enemies.json")
 	load_effects_db()
+	load_dante_enhance()
 	
 func load_items_db(path: String = "res://Data/items.json") -> void:
 	var f := FileAccess.open(path, FileAccess.READ)

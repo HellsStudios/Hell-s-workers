@@ -21,7 +21,7 @@ var hero: Node2D
 @onready var hero_effects := $HBoxContainer/VBoxContainer/Effects
 @export var EFFECT_ICON_DIR := "res://Assets/icons/effects"
 @export var EFFECT_ICON_FALLBACK := "res://Assets/icons/effects/_default.png"
-
+@export var DANTE_ICON := "res://Assets/icons/mechanics/dante_charge.png"
 var sally_words_box: HBoxContainer = null
 var sally_lbl_blue: Label = null
 var sally_lbl_red: Label = null
@@ -36,6 +36,17 @@ var sally_lbl_red: Label = null
 var coins_box: HBoxContainer = null
 var coin_nodes: Array[Panel] = []
 @export var ETHER_ICON := "res://Assets/icons/mechanics/ether.png" # опционально
+
+signal charge_changed(new_value: int)
+
+var charge: int = 0:
+	set(value):
+		if charge != value:
+			charge = max(0, value)
+			emit_signal("charge_changed", charge)
+
+func get_charge() -> int:
+	return charge
 
 func _refresh_berit_coins() -> void:
 	if hero == null or String(hero.nick) != "Berit":
@@ -207,6 +218,7 @@ func _refresh_mechanic() -> void:
 			sally_lbl_red.text  = red  if red  != "" else "—"
 			sally_lbl_blue.modulate = Color(0.55, 0.75, 1.0, 1.0) # синий
 			sally_lbl_red.modulate  = Color(1.0, 0.45, 0.45, 1.0) # красный
+	
 
 		return  # не идём ниже
 
@@ -253,7 +265,62 @@ func _refresh_mechanic() -> void:
 
 		_refresh_berit_coins()
 		return  # ← не прячем механику ниже
+	if String(hero.nick) == "Dante":
+		# 1) Гарантируем инициализацию без JSON
+		if not hero.has_meta("dante_charge"):
+			hero.set_meta("dante_charge", 50)
+		if not hero.has_meta("dante_mul"):
+			hero.set_meta("dante_mul", 1)
 
+		var charge := clampi(int(hero.get_meta("dante_charge")), 0, 100)
+		var dante_mul := int(hero.get_meta("dante_mul"))
+		# 2) Иконка механики (слева)
+		if mech_icon and is_instance_valid(mech_icon):
+			if DANTE_ICON != "" and ResourceLoader.exists(DANTE_ICON):
+				mech_icon.texture = load(DANTE_ICON)
+			mech_icon.modulate = Color(1, 1, 1, 1)
+			mech_icon.show()
+
+		# 3) Множитель рядом с иконкой (как у Салли, только число)
+		if mech_val and is_instance_valid(mech_val):
+			mech_val.text = "×%d" % dante_mul
+			mech_val.show()
+
+		# 4) Полоска заряда вместо "двух слов"
+		#    Добавляем (один раз) ProgressBar в mech_box и обновляем значение
+		var bar: ProgressBar = mech_box.get_node_or_null("DanteChargeBar")
+		if bar == null:
+			bar = ProgressBar.new()
+			bar.name = "DanteChargeBar"
+			bar.min_value = 0
+			bar.max_value = 100
+			bar.show_percentage = false
+			bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			bar.custom_minimum_size = Vector2(120, 8)
+
+			# Небольшие стильбоксы, чтобы не зависеть от внешних тем/текстур
+			var bg := StyleBoxFlat.new()
+			bg.bg_color = Color(0, 0, 0, 0.35)
+			bg.corner_radius_top_left = 4
+			bg.corner_radius_top_right = 4
+			bg.corner_radius_bottom_left = 4
+			bg.corner_radius_bottom_right = 4
+
+			var fill := StyleBoxFlat.new()
+			fill.bg_color = Color(0.35, 0.75, 1.0, 0.9)
+			fill.corner_radius_top_left = 4
+			fill.corner_radius_top_right = 4
+			fill.corner_radius_bottom_left = 4
+			fill.corner_radius_bottom_right = 4
+
+			bar.add_theme_stylebox_override("background", bg)
+			bar.add_theme_stylebox_override("fill", fill)
+			mech_box.add_child(bar)
+
+		bar.value = charge
+
+	# Ветку "остальные" не выполняем
+	return
 	# ── Остальные герои: обычная механика (как было) ──
 	var m := {}
 	if hero.has_method("get_mechanic"):

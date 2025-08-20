@@ -36,6 +36,55 @@ var _tween: Tween
 @export var SALLY_BLUE_TINT := Color(0.55, 0.75, 1.0)
 @export var SALLY_GOLD_TINT := Color(1.0, 0.92, 0.35)
 
+func _apply_dante_charge_highlight(btn: Button, hero: Node2D, skill: Dictionary) -> void:
+	if hero == null or not is_instance_valid(hero):
+		return
+	if String(hero.nick) != "Dante":
+		# снимаем зелёный, если вдруг остался
+		if btn.has_theme_color_override("font_color"):
+			btn.remove_theme_color_override("font_color")
+		if btn.has_theme_color_override("font_hover_color"):
+			btn.remove_theme_color_override("font_hover_color")
+		if btn.has_theme_color_override("font_pressed_color"):
+			btn.remove_theme_color_override("font_pressed_color")
+		return
+
+	var skill_name := String(skill.get("name",""))
+	if skill_name == "":
+		return
+
+	var need := GameManager.get_dante_charge_cost(skill) # из JSON
+	if need < 0:
+		# у этого скилла нет consume.charge → подсветка не нужна
+		if btn.has_theme_color_override("font_color"):
+			btn.remove_theme_color_override("font_color")
+		if btn.has_theme_color_override("font_hover_color"):
+			btn.remove_theme_color_override("font_hover_color")
+		if btn.has_theme_color_override("font_pressed_color"):
+			btn.remove_theme_color_override("font_pressed_color")
+		return
+
+	# читаем заряд из meta
+	var have := int(hero.get_meta("dante_charge", 0))
+
+	if have >= need:
+		var green := Color(0.2, 0.9, 0.2)
+		btn.add_theme_color_override("font_color", green)
+		btn.add_theme_color_override("font_hover_color", green)
+		btn.add_theme_color_override("font_pressed_color", green)
+	else:
+		if btn.has_theme_color_override("font_color"):
+			btn.remove_theme_color_override("font_color")
+		if btn.has_theme_color_override("font_hover_color"):
+			btn.remove_theme_color_override("font_hover_color")
+		if btn.has_theme_color_override("font_pressed_color"):
+			btn.remove_theme_color_override("font_pressed_color")
+			
+func _on_dante_charge_changed(_new_value: int) -> void:
+	if current_hero and String(current_hero.nick) == "Dante":
+		update_skill_buttons_for(current_hero)
+
+
 func _sally_tint_for_skill(hero: Node2D, skill: Dictionary) -> Color:
 	if hero == null or not is_instance_valid(hero): return Color(1,1,1)
 	if String(hero.nick) != "Sally": return Color(1,1,1)
@@ -275,6 +324,9 @@ func show_main_menu(hero: Node2D):
 	if hero and String(hero.nick) == "Berit" and hero.has_signal("coins_changed"):
 		if not hero.is_connected("coins_changed", Callable(self, "_on_berit_coins_changed")):
 			hero.connect("coins_changed", Callable(self, "_on_berit_coins_changed"))
+	if hero and String(hero.nick) == "Dante" and hero.has_signal("charge_changed"):
+		if not hero.is_connected("charge_changed", Callable(self, "_on_dante_charge_changed")):
+			hero.connect("charge_changed", Callable(self, "_on_dante_charge_changed"))
 	update_skill_buttons_for(hero)
 	update_item_buttons()
 	_reposition_now()
@@ -334,6 +386,14 @@ func update_skill_buttons_for(hero: Node2D):
 		btn.modulate = Color(1,1,1)
 		btn.set_meta("skill", null)
 
+		# >>> ВАЖНО: убрать зелёный (и любые прошлые) оверрайды шрифта <<<
+		if btn.has_theme_color_override("font_color"):
+			btn.remove_theme_color_override("font_color")
+		if btn.has_theme_color_override("font_hover_color"):
+			btn.remove_theme_color_override("font_hover_color")
+		if btn.has_theme_color_override("font_pressed_color"):
+			btn.remove_theme_color_override("font_pressed_color")
+
 		# включаем только если есть соответствующий скилл
 		if i >= skills.size() or typeof(skills[i]) != TYPE_DICTIONARY:
 			continue
@@ -355,6 +415,8 @@ func update_skill_buttons_for(hero: Node2D):
 			_apply_enhance_highlight(btn, _can_enhance(hero, skill))
 		elif String(hero.nick) == "Sally":
 			btn.modulate = _sally_tint_for_skill(hero, skill)
+		elif String(hero.nick) == "Dante":
+			_apply_dante_charge_highlight(btn, hero, skill)
 
 		# описание и клик
 		_hook_hover_for_desc(btn)

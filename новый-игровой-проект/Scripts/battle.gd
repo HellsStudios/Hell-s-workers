@@ -58,6 +58,187 @@ var enemy_bars: Dictionary = {}  # enemy -> bar
 @export var ENCOUNTER_ENEMIES: Array[String] = ["Yezt","Clue","Alex"]
 @export var DEBUG_SALLY := true
 
+
+
+func _dante_basic_attack_apply_turret(actor: Node2D, dmg_in: int) -> int:
+	if actor == null or not is_instance_valid(actor):
+		return dmg_in
+	if String(actor.nick) != "Dante":
+		return dmg_in
+	if not bool(actor.get_meta("turret_active", false)):
+		return dmg_in
+
+	var mult  = float(actor.get_meta("turret_basic_mult", 1.0))
+	if mult < 1.0:
+		mult = 1.0
+	var cost  = int(actor.get_meta("turret_basic_charge_cost", 0))
+	var base  = max(0, int(dmg_in))
+	var out   = int(round(base * mult))
+
+	# списание заряда, если задана стоимость
+	if cost > 0:
+		var charge = int(actor.get_meta("dante_charge", 0))
+		var new_charge = charge - cost
+		if new_charge < 0: new_charge = 0
+		actor.set_meta("dante_charge", new_charge)
+		if actor.has_signal("charge_changed"):
+			actor.emit_signal("charge_changed", new_charge)
+		print("[TURRET][DANTE] basic mult=%.2f cost=%d charge %d -> %d" % [mult, cost, charge, new_charge])
+
+		# на нуле — удалить эффект, если требуется
+		if new_charge == 0 and bool(actor.get_meta("turret_end_on_zero_charge", false)):
+			var removed := false
+			if actor.has_method("remove_effects_by_tag"):
+				actor.remove_effects_by_tag("turret")
+				removed = true
+			elif actor.has_method("remove_effect_by_id"):
+				actor.remove_effect_by_id("focus_D")
+				removed = true
+			print("[TURRET][DANTE] charge zero -> turret removed")
+
+	return out
+
+func _turret_absorb_if_any(target: Node2D, attacker: Node2D, dmg: int) -> bool:
+	if target == null or not is_instance_valid(target):
+		return false
+	if dmg <= 0:
+		return false
+
+	var left := int(target.get_meta("turret_shields_left", 0))
+	if left <= 0:
+		return false
+
+	# поглощаем удар
+	left -= 1
+	target.set_meta("turret_shields_left", left)
+	print("[TURRET][ABSORB] tgt=%s absorbed hit (%d). left=%d" % [String(target.name), dmg, left])
+
+	# визуальный поп щита — если у тебя есть такой хук
+	if has_method("_play_shield_pop"):
+		call("_play_shield_pop", target)
+
+	# щиты кончились — снять эффект, если настроено и есть способ
+	if left <= 0 and bool(target.get_meta("turret_end_on_shields_broken", false)):
+		var removed := false
+		if target.has_method("remove_effects_by_tag"):
+			target.remove_effects_by_tag("turret")
+			removed = true
+		elif target.has_method("remove_effect_by_id"):
+			target.remove_effect_by_id("focus_D")
+			removed = true
+		print("[TURRET][ABSORB] shields broken on %s; removed=%s" % [String(target.name), removed])
+
+	return true
+
+
+func _has_reflect_equal_damage(u: Node2D) -> bool:
+	return u != null and is_instance_valid(u) and bool(u.get_meta("reflect_equal_damage", false))
+
+func _is_qte_dodge_blocked(u: Node2D) -> bool:
+	return u != null and is_instance_valid(u) and bool(u.get_meta("qte_dodge_disabled", false))
+# --- DANTE HELPERS ---
+func _dante_can_enhance(user: Node2D, skill: Dictionary) -> bool:
+	if user == null or not is_instance_valid(user): return false
+	if String(user.nick) != "Dante": return false
+	var need := GameManager.get_dante_charge_cost(skill)
+	if need <= 0: return false
+	var have := int(user.get_meta("dante_charge", 0))
+	return have >= need
+
+func _dante_consume_charge(user: Node2D, skill: Dictionary) -> void:
+	var need := GameManager.get_dante_charge_cost(skill)
+	if need <= 0: return
+	var have := int(user.get_meta("dante_charge", 0))
+	var left := have - need
+	if left < 0: left = 0
+	user.set_meta("dante_charge", left)
+	if user.has_signal("charge_changed"):
+		user.emit_signal("charge_changed", left)
+
+# берём блок усиления из JSON (consume/e nhance у тебя в dante_enhance.json)
+func _dante_get_enhance_block(skill_name: String) -> Dictionary:
+	if GameManager.has_method("get_dante_enhance_block"):
+		return GameManager.get_dante_enhance_block(skill_name)
+	# если геттера нет — просто пусто (не валим бой)
+	return {}
+
+# делаем ЛОКАЛЬНУЮ копию скилла с полями:
+#  - damage_mult (если есть)
+#  - _dante_gen_fx (Array эффектов на все цели)
+#  - _dante_per_fx (Dictionary: "id:Dante"/"ally_other"/"enemy_other" -> Array эффектов)
+func _dante_build_enhanced_skill(user: Node2D, base_skill: Dictionary) -> Dictionary:
+	var skill := base_skill.duplicate(true)
+	var name := String(skill.get("name",""))
+	if name == "":
+		return skill
+
+	var enh := _dante_get_enhance_block(name)
+	if enh.is_empty():
+		return skill
+
+	var gen = enh.get("generic", {})
+	if typeof(gen) == TYPE_DICTIONARY and not gen.is_empty():
+		if gen.has("damage_mult"):
+			var cur_mult := float(skill.get("damage_mult", 1.0))
+			var add_mult := float(gen.get("damage_mult", 1.0))
+			skill["damage_mult"] = cur_mult * add_mult
+		var gen_effs = gen.get("effects_to_targets", [])
+		if typeof(gen_effs) == TYPE_ARRAY and gen_effs.size() > 0:
+			skill["_dante_gen_fx"] = gen_effs
+
+	var per = enh.get("per_target", {})
+	if typeof(per) == TYPE_DICTIONARY and not per.is_empty():
+		var map := {}
+		if per.has("Dante"):       map["id:Dante"]    = per["Dante"].get("effects_to_targets", [])
+		if per.has("Sally"):       map["id:Sally"]    = per["Sally"].get("effects_to_targets", [])
+		if per.has("Berit"):       map["id:Berit"]    = per["Berit"].get("effects_to_targets", [])
+		if per.has("ally_other"):  map["ally_other"]  = per["ally_other"].get("effects_to_targets", [])
+		if per.has("enemy_other"): map["enemy_other"] = per["enemy_other"].get("effects_to_targets", [])
+		skill["_dante_per_fx"] = map
+	return skill
+
+# навесить собранные эффекты на конкретные ЦЕЛИ В ЭТОЙ ВЕТКЕ
+# generic -> на весь переданный group
+# per_target:
+#   - id:Dante/Sally/Berit -> на цели из group с таким nick
+#   - ally_other -> на союзников из group, кроме самого user
+#   - enemy_other -> на врагов из group
+func _dante_apply_collected_fx(user: Node2D, skill: Dictionary, group: Array) -> void:
+	var gen = skill.get("_dante_gen_fx", [])
+	if typeof(gen) == TYPE_ARRAY and gen.size() > 0:
+		for u in group:
+			if is_instance_valid(u):
+				_apply_effects(gen, u)
+
+	var per = skill.get("_dante_per_fx", {})
+	if typeof(per) != TYPE_DICTIONARY or per.is_empty():
+		return
+
+	for tag in ["id:Dante", "id:Sally", "id:Berit"]:
+		if per.has(tag):
+			var arr = per[tag]
+			if typeof(arr) == TYPE_ARRAY and arr.size() > 0:
+				var who = tag.replace("id:", "")
+				for u in group:
+					if is_instance_valid(u) and String(u.nick) == who:
+						_apply_effects(arr, u)
+
+	if per.has("ally_other"):
+		var arr2 = per["ally_other"]
+		if typeof(arr2) == TYPE_ARRAY and arr2.size() > 0:
+			for u in group:
+				if is_instance_valid(u) and String(u.team) == String(user.team) and u != user:
+					_apply_effects(arr2, u)
+
+	if per.has("enemy_other"):
+		var arr3 = per["enemy_other"]
+		if typeof(arr3) == TYPE_ARRAY and arr3.size() > 0:
+			for u in group:
+				if is_instance_valid(u) and String(u.team) != String(user.team):
+					_apply_effects(arr3, u)
+# --- /DANTE HELPERS ---
+
+
 func _sally_dbg(stage: String, actor: Node2D, skill: Dictionary, extra: Dictionary = {}) -> void:
 	if not DEBUG_SALLY: return
 	if actor == null or not is_instance_valid(actor): return
@@ -96,6 +277,33 @@ var _battle_over := false
 
 var _cam_saved := { "pos": Vector2.ZERO, "zoom": Vector2.ONE, "proc": Node.PROCESS_MODE_INHERIT, "smooth": false }
 var _vp_saved_xform: Transform2D = Transform2D.IDENTITY
+
+func _get_dante():
+	# если у тебя список союзных героев называется иначе — замени party_heroes на свой
+	for h in heroes:
+		if String(h.nick) == "Dante":
+			return h
+	return null
+	
+func _dante_inc_mul(by: int) -> void:
+	var d = _get_dante()
+	if d == null: return
+	var mul := int(d.get_meta("dante_mul", 1))
+	mul = clamp(mul + by, 1, 5)
+	d.set_meta("dante_mul", mul)
+	# print_debug("[DANTE][mul] +%d -> %d" % [by, mul])
+
+func _dante_add_charge(base: int, reason := "") -> void:
+	if _has_dante(heroes):
+		var d = _get_dante()
+		if d == null: return
+		var mul := int(d.get_meta("dante_mul", 1))
+		mul = max(1, mul)
+		var add := base * mul
+		var cur := int(d.get_meta("dante_charge", 0))
+		var nxt = clamp(cur + add, 0, 100)
+		d.set_meta("dante_charge", nxt)
+		# print_debug("[DANTE][charge] +%d x%d = %d -> %d (%s)" % [base, mul, add, nxt, reason])
 
 func _sally_psycho_auto(actor: Node2D) -> void:
 	# --- собрать живых врагов ---
@@ -1678,7 +1886,12 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 
 				var tgt: Node2D = targets[0]
 				_is_acting = true
-				await _do_melee_single(actor, tgt, max(1, actor.attack))
+				if String(actor.nick) == "Dante":
+					var __base := int(actor.attack)
+					var __dmg  = _dante_basic_attack_apply_turret(actor, __base)
+					await _do_melee_single(actor, tgt, max(1, __dmg), [])
+				else:
+					await _do_melee_single(actor, tgt, max(1, actor.attack))
 				_is_acting = false
 				end_turn()
 			, "single")
@@ -1763,6 +1976,8 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 				print("[BERIT] try recipe for '", String(skill.get("name","")), "' coins=", (actor.ether_coins if actor and actor.has_method("coins_count") else []))
 				skill = _maybe_apply_berit_enhance(actor, skill)
 				if skill.has("__berit_enhanced"): print("[BERIT] enhanced=true")
+			
+
 				
 			var is_magic := String(skill.get("type","")) == "magic"
 			var base_dmg := int(skill.get("damage", actor.attack))
@@ -1783,6 +1998,14 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 					_pay_cost(actor, skill)
 
 					var tgt: Node2D = targets[0]
+					if String(actor.nick) == "Dante" and _dante_can_enhance(actor, skill):
+						skill = _dante_build_enhanced_skill(actor, skill)
+						_dante_consume_charge(actor, skill)
+					# если есть множитель урона — учитываем его
+					if skill.has("damage_mult"):
+						var dm := float(skill.get("damage_mult", 1.0))
+						var dmg_now := int(round(max(1.0, float(base_dmg) * dm)))
+						base_dmg = max(1, dmg_now)
 					if skill.has("qte"):
 						await _perform_with_qte(actor, [tgt], skill)   # ← QTE-путь
 					else:
@@ -1811,7 +2034,8 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 					# пост-обновление вдохновения
 					_sally_apply_inspiration_after_cast(actor, skill)
 
-
+					if String(actor.nick) == "Dante":
+						_dante_apply_collected_fx(actor, skill, [tgt])
 					end_turn()
 				, "single")
 
@@ -1829,7 +2053,14 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 						return
 					var mana_before = actor.mana
 					_pay_cost(actor, skill)
-
+					# --- DANTE: усиление и списание ---
+					if String(actor.nick) == "Dante" and _dante_can_enhance(actor, skill):
+						skill = _dante_build_enhanced_skill(actor, skill)
+						_dante_consume_charge(actor, skill)
+					if skill.has("damage_mult"):
+						var dm := float(skill.get("damage_mult", 1.0))
+						var dmg_now := int(round(max(1.0, float(base_dmg) * dm)))
+						base_dmg = max(1, dmg_now)
 					if skill.has("qte"):
 						await _perform_with_qte(actor, list_all, skill)  # ← QTE-путь и для массовых
 					else:
@@ -1856,40 +2087,59 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 
 					# пост-обновление вдохновения
 					_sally_apply_inspiration_after_cast(actor, skill)
-
+					if String(actor.nick) == "Dante":
+						_dante_apply_collected_fx(actor, skill, list_all)
 					end_turn()
 				, "all")
 
 			elif s_target == "self":
-				if not _can_pay_cost(actor, skill):
-					show_player_options(actor); return
-				var mana_before = actor.mana
-				_pay_cost(actor, skill)
-				if skill.has("qte"):
-					await _perform_with_qte(actor, [actor], skill)
-				else:
-					_is_acting = true
-					await _do_support(actor, actor, skill)
-					_is_acting = false
+				var list_self: Array[Node2D] = []
+				if is_instance_valid(actor) and actor.health > 0:
+					list_self.append(actor)
+				if list_self.is_empty():
+					end_turn()
+					return
 
-				# ADD: трата маны -> монеты Бериту
-				var spent_for_award = max(0, mana_before - actor.mana)
-				_award_berit_by_team_mana(spent_for_award, actor.team)  # ADD
+				_build_target_overlay(actor, list_self, func(_targets: Array) -> void:
+					if not _can_pay_cost(actor, skill):
+						show_player_options(actor)
+						return
 
-				# возврат маны Салли — только «синее» и не «красное/золото», и только один раз
-				if String(actor.nick) == "Sally" \
-				and bool(skill.get("__sally_blue", false)) \
-				and not bool(skill.get("__sally_red", false)) \
-				and not bool(skill.get("__sally_gold", false)) \
-				and not bool(skill.get("__sally_refunded", false)):
-					if spent_for_award > 0:
-						actor.mana = min(actor.max_mana, actor.mana + spent_for_award * 2)
-					skill["__sally_refunded"] = true  # ADD
+					var mana_before = actor.mana
+					_pay_cost(actor, skill)
 
-				# пост-обновление вдохновения
-				_sally_apply_inspiration_after_cast(actor, skill)
+					if String(actor.nick) == "Dante" and _dante_can_enhance(actor, skill):
+						skill = _dante_build_enhanced_skill(actor, skill)
+						_dante_consume_charge(actor, skill)
 
-				end_turn()
+					if skill.has("qte"):
+						await _perform_with_qte(actor, [actor], skill)
+					else:
+						_is_acting = true
+						await _do_support(actor, actor, skill)
+						_is_acting = false
+
+					# монеты Бериту за трату маны
+					var spent_for_award = max(0, mana_before - actor.mana)
+					_award_berit_by_team_mana(spent_for_award, actor.team)
+
+					# возврат маны Салли (только blue, без red/gold, один раз)
+					if String(actor.nick) == "Sally" \
+					and bool(skill.get("__sally_blue", false)) \
+					and not bool(skill.get("__sally_red", false)) \
+					and not bool(skill.get("__sally_gold", false)) \
+					and not bool(skill.get("__sally_refunded", false)):
+						if spent_for_award > 0:
+							actor.mana = min(actor.max_mana, actor.mana + spent_for_award * 2)
+						skill["__sally_refunded"] = true
+
+					# пост-обновления
+					_sally_apply_inspiration_after_cast(actor, skill)
+					if String(actor.nick) == "Dante":
+						_dante_apply_collected_fx(actor, skill, [actor])
+
+					end_turn()
+				, "single")
 
 			elif s_target == "single_ally":
 				var allies: Array[Node2D] = []
@@ -1914,7 +2164,9 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 						return
 					var mana_before = actor.mana
 					_pay_cost(actor, skill)
-
+					if String(actor.nick) == "Dante" and _dante_can_enhance(actor, skill):
+						skill = _dante_build_enhanced_skill(actor, skill)
+						_dante_consume_charge(actor, skill)
 					var tgt_local: Node2D = targets[0]
 
 					_is_acting = true
@@ -1937,7 +2189,8 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 
 					# пост-обновление вдохновения
 					_sally_apply_inspiration_after_cast(actor, skill)
-
+					if String(actor.nick) == "Dante":
+						_dante_apply_collected_fx(actor, skill, [tgt_local])
 					end_turn()
 				, "single")
 
@@ -1961,7 +2214,9 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 					return
 				var mana_before = actor.mana
 				_pay_cost(actor, skill)
-
+				if String(actor.nick) == "Dante" and _dante_can_enhance(actor, skill):
+					skill = _dante_build_enhanced_skill(actor, skill)
+					_dante_consume_charge(actor, skill)
 				if skill.has("qte"):
 					await _perform_with_qte(actor, group, skill)  # ← теперь баффы союзников тоже через QTE
 				else:
@@ -2007,7 +2262,8 @@ func _on_action_selected(action_type: String, actor: Node2D, data):
 
 				# пост-обновление вдохновения
 				_sally_apply_inspiration_after_cast(actor, skill)
-
+				if String(actor.nick) == "Dante":
+					_dante_apply_collected_fx(actor, skill, group)
 				end_turn()
 
 		"item":
@@ -2155,10 +2411,15 @@ func _apply_effects(list: Array, target: Node2D) -> void:
 
 	if debuffs_applied > 0 and _party_has("Dante"):
 		_enemy_debuff_applied += debuffs_applied
+		if debuffs_applied > 0:
+			_dante_add_charge(3 * debuffs_applied, "team_debuffs")
 		var berit := _get_hero_by_name("Berit")
-		while _enemy_debuff_applied >= 3 and berit != null:
+		
+		while _enemy_debuff_applied >= 3:
 			_enemy_debuff_applied -= 3
-			berit.add_coin("green")
+			_dante_inc_mul(2)
+			if berit != null:
+				berit.add_coin("green")
 
 # —————————  СОЗДАЁМ  ГЕРОЕВ  —————————
 func spawn_party() -> void:
@@ -2537,10 +2798,12 @@ func _do_support(user: Node2D, target: Node2D, ability: Dictionary) -> void:
 	var effs_to_target: Array = ability.get("effects_to_targets", [])
 	if effs_to_target.size() > 0:
 		_apply_effects(effs_to_target, target)
+		_dante_add_charge(2, "buff")
 
 	var effs_to_self: Array = ability.get("effects_to_self", [])
 	if effs_to_self.size() > 0:
 		_apply_effects(effs_to_self, user)
+		_dante_add_charge(2, "self_buff")
 
 	await _wait_anim_end(user.anim, clip, 1.2)
 	_play_if_has(user.anim, "idle")
@@ -3134,6 +3397,12 @@ func process_turn():
 	else:
 		enemy_action(ch)
 
+func _has_dante(arr) -> bool:
+	for h in arr:
+		if h != null and is_instance_valid(h) and String(h.nick) == "Dante":
+			return true
+	return false
+
 func end_turn():
 	if _battle_over:
 		return
@@ -3327,24 +3596,47 @@ func _enemy_perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dict
 			for t in targets:
 				if is_instance_valid(t) and t.health > 0:
 					var dmgi := dmg_base
-					# крит врага (если задан)
+					var is_crit := false
 					if dmgi > 0 and crit_ch > 0.0 and randf() < crit_ch:
+						is_crit = true
 						dmgi = int(round(dmgi * 1.5))
-						_apply_melee_hit(t, dmgi, {"done": false}, effs, user, true)
-					elif dmgi > 0:
-						_apply_melee_hit(t, dmgi, {"done": false}, effs, user, false)
+					if dmgi <= 0:
+						print("[REFLECT][AoE/noQTE] skip: dmgi<=0 tgt=", t.name)
+						continue
+					if _has_reflect_equal_damage(t):
+						print("[REFLECT][AoE/noQTE] tgt=", t.name, " has reflect. Reflect ", dmgi, " to attacker=", user.name)
+						_apply_melee_hit(user, dmgi, {"done": false}, [], user, is_crit)
+					else:
+						print("[REFLECT][AoE/noQTE] tgt=", t.name, " no reflect. Hit ", dmgi)
+						if _turret_absorb_if_any(t, user, dmgi):
+							print("[TURRET][AoE/noQTE] absorbed -> skip hit for tgt=%s" % String(t.name))
+							continue
+						_apply_melee_hit(t, dmgi, {"done": false}, effs, user, is_crit)
 		else:
-			var tgt: Node2D = targets[0]
-			if is_instance_valid(tgt) and tgt.health > 0:
+			var tgt2: Node2D = targets[0]
+			if is_instance_valid(tgt2) and tgt2.health > 0:
 				var dmgi2 := dmg_base
-				# одиночная цель может защищаться QTE игрока
-				var defres2 := await _defense_single(0.6, [[0.45,0.55]], tgt)
-				await _play_defense_reaction(tgt, defres2)
-				dmgi2 = _apply_damage_with_defense(dmgi2, defres2)
+				# >>> БЛОКИРОВКА QTE-УКЛОНА ДЛЯ ОДИНОЧНОЙ ЦЕЛИ <<<
+				var qte_allowed_single := not _is_qte_dodge_blocked(tgt2)
+				if qte_allowed_single:
+					var defres2 := await _defense_single(0.6, [[0.45,0.55]], tgt2)
+					await _play_defense_reaction(tgt2, defres2)
+					dmgi2 = _apply_damage_with_defense(dmgi2, defres2)
+				# иначе QTE не даём и урон идёт напрямую
 				if dmgi2 > 0:
-					var is_crit := crit_ch > 0.0 and randf() < crit_ch
-					if is_crit: dmgi2 = int(round(dmgi2 * 1.5))
-					_apply_melee_hit(tgt, dmgi2, {"done": false}, effs, user, is_crit)
+					var is_crit2 := crit_ch > 0.0 and randf() < crit_ch
+					if is_crit2: dmgi2 = int(round(dmgi2 * 1.5))
+					if _has_reflect_equal_damage(tgt2):
+						print("[REFLECT][Single/noQTE] tgt=", tgt2.name, " has reflect. Reflect ", dmgi2, " to attacker=", user.name)
+						_apply_melee_hit(user, dmgi2, {"done": false}, [], user, is_crit2)
+					else:
+						print("[REFLECT][Single/noQTE] tgt=", tgt2.name, " no reflect. Hit ", dmgi2)
+						if _turret_absorb_if_any(tgt2, user, dmgi2):
+							print("[TURRET][Single/noQTE] absorbed -> skip hit for tgt=%s" % String(tgt2.name))
+						else:
+							_apply_melee_hit(tgt2, dmgi2, {"done": false}, effs, user, is_crit2)
+				else:
+					print("[REFLECT][Single/noQTE] dmg blocked to 0 for tgt=", tgt2.name)
 	else:
 		# пошаговый QTE
 		for step in steps:
@@ -3363,33 +3655,72 @@ func _enemy_perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dict
 			if segs.is_empty(): segs = [[0.45,0.55]]
 
 			if is_aoe:
-				# общий результат защиты (групповой)
-				var defres := await _defense_aoe(dur, segs)
-				await _play_defense_reaction_parallel(targets, defres)
+				# >>> QTE ДОЛЖЕН ПОКАЗЫВАТЬСЯ ТОЛЬКО ТЕМ, У КОГО НЕТ ЗАПРЕТА <<<
+				var qte_targets: Array[Node2D] = []
+				for u in targets:
+					if is_instance_valid(u) and u.health > 0 and not _is_qte_dodge_blocked(u):
+						qte_targets.append(u)
 
 				var mult := 1.0
-				if String(defres.get("type","none")) == "dodge":
-					var grade := String(defres.get("grade","fail"))
-					if grade == "good" or grade == "perfect":
-						mult = 0.0
+				var defres := {}    # общий результат защиты группы (для разрешённых)
+				if qte_targets.size() > 0:
+					defres = await _defense_aoe(dur, segs)
+					await _play_defense_reaction_parallel(qte_targets, defres)
+					mult = 1.0
+					if String(defres.get("type","none")) == "dodge":
+						var grade := String(defres.get("grade","fail"))
+						if grade == "good" or grade == "perfect":
+							mult = 0.0
+							# ЕСЛИ В ПАРТИИ ЕСТЬ ДАНТЕ — бонус за удачный уклон
+							_dante_add_charge(5, "dodge")
 
+				# Накладываем урон: заблокированным QTE — всегда без уклонения (mult=1.0),
+				# разрешённым — по результату группового QTE.
 				for t in targets:
 					if is_instance_valid(t) and t.health > 0:
-						var dmgi := int(round(dmg_base * mult))
+						var t_mult := mult
+						if _is_qte_dodge_blocked(t):
+							t_mult = 1.0
+						var dmgi := int(round(dmg_base * t_mult))
 						if dmgi > 0:
 							var is_crit := crit_ch > 0.0 and randf() < crit_ch
 							if is_crit: dmgi = int(round(dmgi * 1.5))
-							_apply_melee_hit(t, dmgi, {"done": false}, effs, user, is_crit)
+							if _has_reflect_equal_damage(t):
+								print("[REFLECT][AoE/QTE] tgt=", t.name, " mult=", t_mult, " has reflect. Reflect ", dmgi, " to attacker=", user.name)
+								_apply_melee_hit(user, dmgi, {"done": false}, [], user, is_crit)
+							else:
+								print("[REFLECT][AoE/QTE] tgt=", t.name, " mult=", t_mult, " no reflect. Hit ", dmgi)
+								if _turret_absorb_if_any(t, user, dmgi):
+									print("[TURRET][AoE/QTE] absorbed -> skip hit for tgt=%s" % String(t.name))
+								else:
+									_apply_melee_hit(t, dmgi, {"done": false}, effs, user, is_crit)
+						else:
+							print("[REFLECT][AoE/QTE] tgt=", t.name, " mult=", t_mult, " -> dmgi=0")
 			else:
-				var tgt: Node2D = targets[0]
-				if is_instance_valid(tgt) and tgt.health > 0:
-					var defres2 := await _defense_single(dur, segs, tgt)
-					await _play_defense_reaction(tgt, defres2)
-					var dmgi2 := _apply_damage_with_defense(dmg_base, defres2)
-					if dmgi2 > 0:
-						var is_crit := crit_ch > 0.0 and randf() < crit_ch
-						if is_crit: dmgi2 = int(round(dmgi2 * 1.5))
-						_apply_melee_hit(tgt, dmgi2, {"done": false}, effs, user, is_crit)
+				var tgt3: Node2D = targets[0]
+				if is_instance_valid(tgt3) and tgt3.health > 0:
+					# >>> ДЛЯ ОДИНОЧНОЙ ЦЕЛИ QTE ТОЛЬКО ЕСЛИ НЕ ЗАПРЕЩЁН <<<
+					var qte_allowed_single2 := not _is_qte_dodge_blocked(tgt3)
+					var dmgi3 := dmg_base
+					if qte_allowed_single2:
+						var defres3 := await _defense_single(dur, segs, tgt3)
+						await _play_defense_reaction(tgt3, defres3)
+						dmgi3 = _apply_damage_with_defense(dmgi3, defres3)
+					# иначе QTE не даём — урон напрямую
+					if dmgi3 > 0:
+						var is_crit3 := crit_ch > 0.0 and randf() < crit_ch
+						if is_crit3: dmgi3 = int(round(dmgi3 * 1.5))
+						if _has_reflect_equal_damage(tgt3):
+							print("[REFLECT][Single/QTE] tgt=", tgt3.name, " has reflect. Reflect ", dmgi3, " to attacker=", user.name)
+							_apply_melee_hit(user, dmgi3, {"done": false}, [], user, is_crit3)
+						else:
+							print("[REFLECT][Single/QTE] tgt=", tgt3.name, " no reflect. Hit ", dmgi3)
+							if _turret_absorb_if_any(tgt3, user, dmgi3):
+								print("[TURRET][Single/QTE] absorbed -> skip hit for tgt=%s" % String(tgt3.name))
+							else:
+								_apply_melee_hit(tgt3, dmgi3, {"done": false}, effs, user, is_crit3)
+					else:
+						print("[REFLECT][Single/QTE] tgt=", tgt3.name, " -> dmgi=0")
 
 			await _wait_anim_end(user.anim, clip, 0.8)
 
@@ -3400,6 +3731,7 @@ func _enemy_perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dict
 	_update_enemy_bars_positions()
 	await _cam_pop()
 	_exit_cinematic()
+
 
 func _devour_take(eater: Node2D, victim: Node2D, skill: Dictionary) -> void:
 	if eater == null or victim == null: return
@@ -3650,10 +3982,12 @@ func perform_action(user: Node2D, action: Dictionary) -> void:
 			for ally in targets:
 				if is_instance_valid(ally) and ally.health > 0:
 					_apply_effects(effs_targets, ally)
+					_dante_add_charge(2, "buff")
 
 		var effs_self: Array = action.get("effects_to_self", [])
 		if effs_self.size() > 0:
 			_apply_effects(effs_self, user)
+			_dante_add_charge(2, "self_buff")
 
 		await _wait_anim_end(ap, clip, 1.2)
 		_play_if_has(ap, "idle")
@@ -4036,3 +4370,4 @@ func _show_battle_result(result: String) -> void:
 				return
 		get_tree().quit()
 	)
+	

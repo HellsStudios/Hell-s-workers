@@ -69,6 +69,9 @@ func remove_effect(id: String) -> void:
 		if String(e.get("id","")) != id:
 			out.append(e)
 	effects = out
+	_refresh_qte_dodge_block_flag()
+	_refresh_reflect_equal_flag()
+	_refresh_turret_focus_meta()
 
 func clear_effects() -> void:
 	effects.clear()
@@ -199,7 +202,10 @@ func add_effect(data: Dictionary) -> void:
 	else:
 		effects.append(rec)
 		_ef_log("add '" + id + "' perm=" + str(rec.get("permanent", false)) + " dur=" + str(rec.get("duration", -1)))
-
+	_refresh_qte_dodge_block_flag()
+	_refresh_reflect_equal_flag()
+	_refresh_turret_focus_meta()
+	
 # Пакетное применение списка эффектов (как в умениях/предметах)
 func apply_effects(list_in: Array) -> void:
 	if list_in == null:
@@ -222,6 +228,9 @@ func tick_effects_duration() -> void:
 				e["duration"] = d
 				out.append(e)
 	effects = out
+	_refresh_qte_dodge_block_flag()
+	_refresh_reflect_equal_flag()
+	_refresh_turret_focus_meta()
 
 # Снимок эффектов (без возможности внешней мутации)
 func get_effects_snapshot() -> Array:
@@ -431,8 +440,86 @@ func _init_abilities():
 			{"name": "Яд", "type": "magic", "target": "single_enemy", "damage": 5, "effect": "poison", "cost_type": "mana", "cost": 5, "accuracy": 0.8}
 		]
 		
+func _refresh_turret_focus_meta() -> void:
+	var active := false
+	var basic_mult := 1.0
+	var basic_cost := 0
+	var end_zero := false
+	var end_broken := false
+	var initial_shields := 0
+
+	for e in effects:
+		var id := String(e.get("id",""))
+		if id == "":
+			continue
+		var proto := GameManager.get_effect_proto(id)
+		if typeof(proto) != TYPE_DICTIONARY:
+			continue
+
+		var tags = proto.get("tags", [])
+		if typeof(tags) == TYPE_ARRAY and tags.has("turret"):
+			active = true
+			var behavior = proto.get("behavior", {})
+			if typeof(behavior) == TYPE_DICTIONARY:
+				basic_mult   = float(behavior.get("basic_attack_mult", 1.0))
+				basic_cost   = int(behavior.get("basic_attack_charge_cost", 0))
+				end_zero     = bool(behavior.get("end_on_zero_charge", false))
+				end_broken   = bool(behavior.get("end_on_shields_broken", false))
+				initial_shields = int(behavior.get("shield_hits", 0))
+			break
+
+	# мета-флаги активности и параметры
+	set_meta("turret_active", active)
+	set_meta("turret_basic_mult", basic_mult)
+	set_meta("turret_basic_charge_cost", basic_cost)
+	set_meta("turret_end_on_zero_charge", end_zero)
+	set_meta("turret_end_on_shields_broken", end_broken)
+
+	# счётчик щитов: инициализируем только один раз
+	if active:
+		var cur_left := int(get_meta("turret_shields_left", -1))
+		if cur_left < 0:
+			set_meta("turret_shields_left", max(0, initial_shields))
+			print("[TURRET][CHAR] %s shields init -> %d" % [String(name), int(get_meta("turret_shields_left", 0))])
+	else:
+		# эффект исчез — сбрасываем к дефолтам (без erase_meta)
+		set_meta("turret_shields_left", 0)
+		set_meta("turret_basic_mult", 1.0)
+		set_meta("turret_basic_charge_cost", 0)
+		set_meta("turret_end_on_zero_charge", false)
+		set_meta("turret_end_on_shields_broken", false)
 
 
+func _refresh_reflect_equal_flag() -> void:
+	var has_reflect := false
+	for e in effects:
+		var id := String(e.get("id",""))
+		if id == "":
+			continue
+		var proto := GameManager.get_effect_proto(id)
+		if typeof(proto) != TYPE_DICTIONARY:
+			continue
+		var behavior = proto.get("behavior", {})
+		if bool(behavior.get("reflect_equal_damage", false)):
+			has_reflect = true
+			break
+	set_meta("reflect_equal_damage", has_reflect)
+# Пересчёт флага запрета QTE-уклонения по активным эффектам
+func _refresh_qte_dodge_block_flag() -> void:
+	var cnt := 0
+	for e in effects:
+		var id := String(e.get("id",""))
+		if id == "": 
+			continue
+		var proto := GameManager.get_effect_proto(id)
+		if typeof(proto) != TYPE_DICTIONARY:
+			continue
+		var mods = proto.get("mods", {})
+		var behavior = proto.get("behavior", {})
+		if bool(mods.get("stun", false)) or bool(behavior.get("qte_dodge_disabled", false)):
+			cnt += 1
+	set_meta("qte_dodge_blockers", cnt)
+	set_meta("qte_dodge_disabled", cnt > 0)
 
 func get_effects() -> Array:
 	return effects
@@ -485,6 +572,15 @@ func on_turn_start() -> void:
 	if mana_drain > 0:
 		mana = max(0, mana - mana_drain)
 		
+	var mana_gain := 0
+	for ex in effects:
+		if ex.has("mods"):
+			var mods = ex["mods"]
+			if typeof(mods) == TYPE_DICTIONARY and mods.has("mana_regen"):
+				mana_gain += int(mods["mana_regen"])
+	if mana_gain > 0:
+		mana = min(max_mana, mana + mana_gain)
+		
 	if String(nick) == "Sally":
 		if mana > 0:
 			if has_effect("apathy"):
@@ -493,7 +589,12 @@ func on_turn_start() -> void:
 	# реген стамины героя
 	if team == "hero" and max_stamina > 0:
 		stamina = min(max_stamina, stamina + 10)
-
+		
+	#Данте уменьшает мультипликатор
+	if String(nick) == "Dante":
+		var mul := int(get_meta("dante_mul", 1))
+		mul = max(1, mul - 1)            # уменьшаем, но не ниже 1
+		set_meta("dante_mul", mul)
 	# тик длительности
 	var i := 0
 	while i < effects.size():
