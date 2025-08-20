@@ -62,7 +62,7 @@
 		  "type": "magic",
 		  "target": "self",
 		  "effects_to_self": [
-			{ "id": "squirrel_dodge", "name": "Сбитый прицел", "is_buff": true, "evade_chance": 0.20, "crit_taken_mult": 1.5,"duration": 2}
+			{ "id": "squirrel_dodge", "duration": 2}
 		  ]
 		},
 		{
@@ -84,7 +84,7 @@
 		  "type": "magic",
 		  "target": "single_enemy",
 		  "effects_to_targets": [
-			{ "id": "slow", "name": "Замедление", "is_buff": false, "speed": -2, "duration": 2 }
+			{ "id": "slow", "duration": 2 }
 		  ]
 		}
 	  ]
@@ -107,7 +107,7 @@
 	  "type": "magic",
 	  "target": "single_enemy",
 	  "effects_to_targets": [
-		{ "id": "hypnosis", "name": "Гипноз", "is_buff": false, "stun": true, "duration": 2 }
+		{ "id": "hypnosis", "duration": 2 }
 	  ],
 	  "qte": { "steps":[{ "anim":"cast", "duration":0.8, "segments":[[0.44,0.56]] }] }
 	},
@@ -126,7 +126,7 @@
 	  "special": "devour",
 	  "hp_threshold": 0.5,
 	  "effects_to_self": [
-		{ "id": "sated", "name": "Сытость", "is_buff": true, "defense": 6, "regen": 5, "duration": 999 }
+		{ "id": "sated"}
 	  ],
 	  "qte": { "steps":[{ "anim":"attack", "duration":0.8, "segments":[[0.40,0.55]] }] },
 

@@ -1,0 +1,58 @@
+{
+  "Калибровка импульса": {
+	"consume": { "charge": 45 },
+	"enhance": {
+	  "per_target": {
+		"Dante": {
+		  "effects_to_targets": [
+			{ "id": "atk_up_D", "duration": 3 },
+			{ "id": "focus_D",  "duration": 2 }
+		  ]
+		},
+		"Sally": {
+		  "effects_to_targets": [
+			{ "id": "fast_cast_S",  "duration": 2 },
+			{ "id": "mana_regen_S", "duration": 3 }
+		  ]
+		},
+		"Berit": {
+		  "effects_to_targets": [
+			{ "id": "def_up_B",  "duration": 3 },
+			{ "id": "counter_B", "duration": 1 }
+		  ]
+		},
+		"ally_other": {
+		  "effects_to_targets": [
+			{ "id": "atk_up_plus", "duration": 3 }
+		  ]
+		}
+	  }
+	}
+  },
+
+  "Сетевые помехи": {
+	"consume": { "charge": 20 },
+	"enhance": {
+	  "per_target": {
+		"enemy_other": {
+		  "effects_to_targets": [
+			{ "id": "disorient_plus", "duration": 3 },
+			{ "id": "vuln_magic",     "duration": 2 }
+		  ]
+		}
+	  }
+	}
+  },
+
+  "Электрошокер": {
+	"consume": { "charge": 30 },
+	"enhance": {
+	  "generic": {
+		"damage_mult": 1.35,
+		"effects_to_targets": [
+		  { "id": "shock_plus", "duration": 2 }
+		]
+	  }
+	}
+  }
+}

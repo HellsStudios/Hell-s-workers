@@ -53,7 +53,7 @@
 		  "type": "physical",
 		  "target": "self",
 		  "effects_to_self": [
-			{ "id": "def_up", "name": "Защита +", "is_buff": true, "defense": 5, "duration": 2 }
+			{ "id": "def_up", "duration": 2 }
 		  ],
 		  "costs": { "stamina": 6 },
 		  "qte": {
@@ -85,7 +85,7 @@
 	  "skills": [
 		{
 		  "name": "Полтер-тычок",
-		  "desc": "Призрачный толчок по одному врагу (МН 6). Успех: +10% урона. Идеал: +30% урона.",
+		  "desc": "Призрачный толчок по одному врагу (МН 6). Успех: +10% урона. Идеал: +30% урона. Шёпот и ветер рвут тишину — и невидимая ладонь толкает сильнее.",
 		  "type": "physical",
 		  "target": "single_enemy",
 		  "damage": 9, "accuracy": 0.95,
@@ -101,12 +101,12 @@
 		},
 		{
 		  "name": "Холодок из-за плеча",
-		  "desc": "Лёд из небытия (МН 10). Наносит урон и накладывает «Замедление» (-2 Скорость) на 2 хода. Успех/Идеал: продлевает эффект на +1/+2 хода.",
+		  "desc": "Лёд из небытия (МН 10). Наносит урон и накладывает «Замедление» (-2 Скорость) на 2 хода. Успех/Идеал: продлевает эффект на +1/+2 хода. Снег ложится на плечи, пепел клятв хрустит под кожей, а гнев зябко прячется в тенях.",
 		  "type": "magic",
 		  "target": "single_enemy",
 		  "damage": 14, "accuracy": 0.90,
 		  "effects_to_targets": [
-			{ "id": "slow", "name": "Замедление", "is_buff": false, "speed": -2, "duration": 2 }
+			{ "id": "slow", "duration": 2 }
 		  ],
 		  "costs": { "mana": 10 },
 		  "qte": {
@@ -120,7 +120,7 @@
 		},
 		{
 		  "name": "Шёпот из стен",
-		  "desc": "Голоса из стен бьют по всем врагам (МН 12). Идеал: +20% урона.",
+		  "desc": "Голоса из стен бьют по всем врагам (МН 12). Идеал: +20% урона. Шёпот кружит, как вино по венам, и кровь в трещинах камня отвечает эхом.",
 		  "type": "magic",
 		  "target": "all_enemies",
 		  "damage": 7, "accuracy": 0.95,
@@ -136,7 +136,7 @@
 		},
 		{
 		  "name": "Лечение",
-		  "desc": "Исцеляет союзника на 22 (МН 12). Успех: +10% лечения. Идеал: +25% лечения.",
+		  "desc": "Исцеляет союзника на 22 (МН 12). Успех: +10% лечения. Идеал: +25% лечения. Тёплый свет, как золото, и любовь в тишине зашивает разрывы мира.",
 		  "type": "magic",
 		  "target": "single_ally",
 		  "heal": 22, "accuracy": 1.0,
@@ -163,62 +163,64 @@
 	  "carry_slots_max": 5,
 	  "forbidden_categories": [],
 	  "pack": [],
-	  "skills": [
-		{
-		  "name": "Боевой клич",
-		  "desc": "Воодушевляет команду (МН 10). Всем союзникам: Сила +5 на 3 хода. Успех/Идеал: длительность +1/+2 хода.",
-		  "type": "magic",
-		  "target": "all_allies",
-		  "effects_to_targets": [
-			{ "id": "atk_up", "name": "Сила +", "is_buff": true, "attack": 5, "duration": 3 }
-		  ],
-		  "costs": { "mana": 10 },
-		  "qte": {
-			"steps": [
-			  { "anim": "cast", "duration": 0.80, "segments": [[0.42, 0.54]] }
+		"skills": [
+		  {
+			"name": "Калибровка импульса",
+			"desc": "Настраивает союзника (МН 6). Сила +5 на 2 хода. Успех/Идеал: длительность +1/+2 хода.",
+			"type": "magic",
+			"gives_charge": 1,
+			"target": "single_ally",
+			"effects_to_targets": [
+			  { "id": "atk_up", "duration": 2 }
 			],
-			"on_success": { "duration_bonus": 1 },
-			"on_perfect": { "duration_bonus": 2 },
-			"on_fail":    { "duration_bonus": 0 }
-		  }
-		},
-		{
-		  "name": "Барьер",
-		  "desc": "Магический щит на союзнике (МН 8). Защита +8 на 3 хода. Успех/Идеал: длительность +1/+2 хода.",
-		  "type": "magic",
-		  "target": "single_ally",
-		  "effects_to_targets": [
-			{ "id": "def_up", "name": "Барьер", "is_buff": true, "defense": 8, "duration": 3 }
-		  ],
-		  "costs": { "mana": 8 },
-		  "qte": {
-			"steps": [
-			  { "anim": "cast", "duration": 0.75, "segments": [[0.40, 0.52]] }
+			"costs": { "mana": 6 },
+			"qte": {
+			  "steps": [
+				{ "anim": "cast", "duration": 0.75, "segments": [[0.40, 0.52]] }
+			  ],
+			  "on_success": { "duration_bonus": 1 },
+			  "on_perfect": { "duration_bonus": 2 },
+			  "on_fail":    { "duration_bonus": 0 }
+			}
+		  },
+		  {
+			"name": "Сетевые помехи",
+			"desc": "Блокирует каналы врага (МН 6). «Дезориентация»: -2 Скорость на 2 хода. Успех/Идеал: длительность +1/+2 хода. Провал: сокращённый эффект.",
+			"type": "magic",
+			"gives_parts": 1,
+			"target": "single_enemy",
+			"effects_to_targets": [
+			  { "id": "disorient", "duration": 2 }
 			],
-			"on_success": { "duration_bonus": 1 },
-			"on_perfect": { "duration_bonus": 2 },
-			"on_fail":    { "duration_bonus": 0 }
+			"costs": { "mana": 6 },
+			"qte": {
+			  "steps": [
+				{ "anim": "cast", "duration": 0.70, "segments": [[0.44, 0.56]] }
+			  ],
+			  "on_success": { "duration_bonus": 1 },
+			  "on_perfect": { "duration_bonus": 2 },
+			  "on_fail":    { "duration_bonus": 0.5 }
+			}
+		  },
+		  {
+			"name": "Электрошокер",
+			"desc": "Электроразряд по одному врагу (МН 8). Успех: +10% урона. Идеал: +30% урона.",
+			"type": "magic",
+			"gives_charge": 1,
+			"target": "single_enemy",
+			"damage": 12,
+			"accuracy": 0.90,
+			"costs": { "mana": 8 },
+			"qte": {
+			  "steps": [
+				{ "anim": "cast", "duration": 0.80, "segments": [[0.45, 0.55]] }
+			  ],
+			  "on_success": { "damage_mult": 1.10 },
+			  "on_perfect": { "damage_mult": 1.30 },
+			  "on_fail":    { "damage_mult": 0.85 }
+			}
 		  }
-		},
-		{
-		  "name": "Дезориентация",
-		  "desc": "Сбивает врага с толку (МН 6). «Дезориентация»: -2 Скорость на 2 хода. Успех/Идеал: длительность +1/+2 хода. Провал: сокращённый эффект.",
-		  "type": "magic",
-		  "target": "single_enemy",
-		  "effects_to_targets": [
-			{ "id": "disorient", "name": "Дезориентация", "is_buff": false, "speed": -2, "duration": 2 }
-		  ],
-		  "costs": { "mana": 6 },
-		  "qte": {
-			"steps": [
-			  { "anim": "cast", "duration": 0.70, "segments": [[0.44, 0.56]] }
-			],
-			"on_success": { "duration_bonus": 1 },
-			"on_perfect": { "duration_bonus": 2 },
-			"on_fail":    { "duration_bonus": 0.5 }
-		  }
-		}
-	  ]
+		]
 	}
   }
 }

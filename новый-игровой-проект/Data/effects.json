@@ -1,0 +1,118 @@
+{
+  "effects": {
+	"slow":        { "name": "Замедление",   "is_buff": false, "mods": { "speed": -2 } },
+	"atk_up":      { "name": "Сила +",       "is_buff": true,  "mods": { "attack": 5 } },
+	"def_up":      { "name": "Защита +",     "is_buff": true,  "mods": { "defense": 5 } },
+	"barrier":     { "name": "Барьер",       "is_buff": true,  "mods": { "defense": 8 } },
+	"disorient":   { "name": "Дезориентация","is_buff": false, "mods": { "speed": -2 } },
+	"squirrel_dodge": { "name": "Сбитый прицел", "is_buff": true, "mods": { "evade_chance": 0.20, "crit_taken_mult": 1.5 } },
+	"hypnosis":    { "name": "Гипноз",       "is_buff": false, "mods": { "stun": true }},
+	"stun":    { "name": "Оглушение",       "is_buff": false, "mods": { "stun": true } },
+	"sated":       { "name": "Сытость",      "is_buff": true,  "mods": { "defense": 6, "regen": 5 }, "permanent": true },
+	
+
+"atk_up_D": {
+  "name": "Атака-Д (неуязвимость + отражение)",
+  "is_buff": true,
+  "mods": {},
+  "behavior": {
+	"qte_dodge_disabled": true,              
+	"reflect_equal_damage": true       
+  }
+},
+
+"focus_D": {
+  "name": "Фокус-Д (турель)",
+  "is_buff": true,
+  "mods": {
+	"evade_chance": 0.0                
+  },
+  "behavior": {
+	"qte_dodge_disabled": true,                  
+	"shield_hits": 5,                  
+	"basic_attack_mult": 5.0,         
+	"basic_attack_charge_cost": 10,    
+	"end_on_zero_charge": true,        
+	"end_on_shields_broken": true      
+  },
+  "tags": ["turret"]
+},
+
+"fast_cast_S": {
+  "name": "Ускорение (Салли)",
+  "is_buff": true,
+  "mods": { "speed": 7 }               
+},
+
+"mana_regen_S": {
+  "name": "Реген маны (Салли)",
+  "is_buff": true,
+  "mods": { "mana_regen": 3 }          
+},
+
+"def_up_B": {
+  "name": "Защита (Берит)",
+  "is_buff": true,
+  "mods": { "defense": 6 }
+},
+
+"counter_B": {
+  "name": "Контратака (Берит)",
+  "is_buff": true,
+  "mods": {},
+  "behavior": {
+	"reflect_equal_damage": true  
+  }
+},
+
+"atk_up_plus": {
+  "name": "Сила ++",
+  "is_buff": true,
+  "mods": { "attack": 8 }
+},
+
+"disorient_plus": {
+  "name": "Дезориентация+",
+  "is_buff": false,
+  "mods": { "speed": -7 }
+},
+
+"vuln_magic": {
+  "name": "Крит-уязвимость",
+  "is_buff": false,
+  "mods": {
+	"evade_chance": -0.20      
+  }
+},
+
+"shock_plus": {
+  "name": "Шок+",
+  "is_buff": false,
+  "mods": { "stun": true },            
+  "tags": ["electric"]
+},
+
+	"apathy": {
+	  "name": "Апатия",
+	  "is_buff": false,
+	  "mods": { "defense": -3, "speed": -3 },
+	  "permanent": true,
+	  "tags": ["mood"]
+	},
+
+	"psychopathy": {
+	  "name": "Психопатия",
+	  "is_buff": false,
+	  "mods": { "attack_mult": 1.10, "mana_drain_per_turn": 20, "speed": 10 },      
+	  "permanent": true,
+	  "tags": ["mood"],
+	  "behavior": {
+		"loss_of_control": true,            
+		"ignore_mana_costs": true,          
+		"fill_mana_on_turn_start": true,  
+		"qte_auto": "success",             
+		"targeting": "random_enemy"
+	  }
+	}
+  }
+}

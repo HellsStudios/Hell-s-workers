@@ -1,0 +1,21 @@
+{
+  "enhance": {
+	"Полтер-тычок": {
+	  "blue": { "damage_mult": 1.15 },
+	  "gold": { "free_cost": true, "damage_mult": 1.35 }
+	},
+	"Холодок из-за плеча": {
+	  "blue": { "damage_mult": 1.20, "duration_bonus": 1 },
+	  "gold": { "free_cost": true, "damage_mult": 1.45, "duration_bonus": 2 }
+	},
+	"Шёпот из стен": {
+	  "blue": { "damage_mult": 1.15 },
+	  "gold": { "free_cost": true, "damage_mult": 1.35 }
+	},
+	"Лечение": {
+	  "blue": { "heal_mult": 1.20 },
+	  "gold": { "free_cost": true, "heal_mult": 1.40 }
+	}
+  },
+  "words": ["кровь","любовь","ветер","тишина","гнев","пепел","шёпот","золото","снег","вино"]
+}

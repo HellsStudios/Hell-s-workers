@@ -23,7 +23,7 @@
 	"name": "Сэндвич",
 	"category": "meat",
 	"sins": ["gluttony"],
-	"target": "self",
+	"target": "single_ally",
 	"effect": "buff",
 	"buff": {"stat": "attack", "amount": 5, "duration": 3},
 	"stack_limit": 99,
