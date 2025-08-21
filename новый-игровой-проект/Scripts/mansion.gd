@@ -13,6 +13,10 @@ var _input_quarantine_t := 0.0
 var _cam_proc_prev := true
 var _cam_phys_prev := true
 
+@onready var cam: Camera2D = $Camera2D
+@onready var manage_menu: PopupPanel = $UI/ManagementMenu
+@onready var manage_btn: Button = $UI/TopBar/ManageButton
+
 func _start_input_quarantine(sec: float = 0.30) -> void:
 	# глушим мир на sec секунд
 	_input_quarantine_t = max(_input_quarantine_t, sec)
@@ -64,6 +68,20 @@ func _process(delta: float) -> void:
 func _ready() -> void:
 	set_process(true)  # нужно для таймового логирования
 	# ... остальное как у тебя было ...
+	GameManager.add_or_update_quest("q_intro", "Первый день", "Осмотрись в поместье.")
+	GameManager.add_or_update_quest("q_bag", "Собери сумку", "Переложи 3 предмета герою.")
+	GameManager.add_codex_entry("Печать", "Официальная печать Берита — тяжёлая.")
+	# чтобы увидеть «серым»:
+	# GameManager.set_quest_completed("q_intro", true)
+	
+func _on_manage_button_pressed() -> void:
+	cam.set_drag_enabled(false)
+	cam.cancel_drag()
+	manage_menu.call("open_centered")
+
+func _on_management_menu_popup_hide() -> void:
+	cam.set_drag_enabled(true)
+	cam.cancel_drag()
 
 
 func _on_room_1_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:
