@@ -1,6 +1,13 @@
-[gd_scene load_steps=10 format=3 uid="uid://bqtjl7w1e0u1u"]
+[gd_scene load_steps=17 format=3 uid="uid://bqtjl7w1e0u1u"]
 
 [ext_resource type="Script" uid="uid://bokvhdh0dn8fu" path="res://Scripts/Character.gd" id="1_lkv7d"]
+[ext_resource type="Texture2D" uid="uid://cnjy0rh1ctpme" path="res://Assets/Sprites/Berit/Berit_rightleg.png" id="2_ejsiy"]
+[ext_resource type="Texture2D" uid="uid://b3lfbflaarygv" path="res://Assets/Sprites/Berit/Berit_tail1.png" id="2_wbia7"]
+[ext_resource type="Texture2D" uid="uid://vf1trtkh8ba2" path="res://Assets/Sprites/Berit/Berit_leftarm.png" id="3_kq7hj"]
+[ext_resource type="Texture2D" uid="uid://b1p55gqaioh68" path="res://Assets/Sprites/Berit/Berit_leftleg.png" id="4_7iw6i"]
+[ext_resource type="Texture2D" uid="uid://lrkfilqo1wkx" path="res://Assets/Sprites/Berit/Berit_rightarm.png" id="4_reotu"]
+[ext_resource type="Texture2D" uid="uid://bwi4af6yy7ov7" path="res://Assets/Sprites/Berit/Berit_body.png" id="5_l1rcp"]
+[ext_resource type="Texture2D" uid="uid://n3y7mas4jn1e" path="res://Assets/Sprites/Berit/Berit_head.png" id="8_wbia7"]
 
 [sub_resource type="Animation" id="Animation_lkv7d"]
 length = 0.001
@@ -2262,7 +2269,7 @@ tracks/13/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector2(8, 8), Vector2(8, 14), Vector2(8, 8)]
+"values": [Vector2(8, 8), Vector2(8, 19.4), Vector2(8, 8)]
 }
 tracks/14/type = "value"
 tracks/14/imported = false
@@ -2310,7 +2317,7 @@ tracks/17/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector2(0, 8), Vector2(0, 10), Vector2(0, 8)]
+"values": [Vector2(0, 8), Vector2(0, 21.425), Vector2(0, 8)]
 }
 tracks/18/type = "value"
 tracks/18/imported = false
@@ -2334,7 +2341,7 @@ tracks/19/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector2(-16, 16), Vector2(-16, 13), Vector2(-16, 16)]
+"values": [Vector2(-16, 16), Vector2(-15.025, 26.93), Vector2(-16, 16)]
 }
 tracks/20/type = "value"
 tracks/20/imported = false
@@ -2815,55 +2822,103 @@ script = ExtResource("1_lkv7d")
 position = Vector2(-8, 48)
 
 [node name="Polygon2D" type="Polygon2D" parent="Tail"]
+visible = false
 position = Vector2(-8, 0)
 offset = Vector2(19.3037, -56.0984)
 polygon = PackedVector2Array(-16, 56, -40, 72, -72, 64, -64, 80, -40, 80, -16, 64)
+
+[node name="Sprite2D" type="Sprite2D" parent="Tail"]
+position = Vector2(-33.06, -5.885)
+scale = Vector2(0.07, 0.07)
+texture = ExtResource("2_wbia7")
 
 [node name="LeftArm" type="Node2D" parent="."]
 position = Vector2(0, 8)
 
 [node name="Polygon2D" type="Polygon2D" parent="LeftArm"]
+visible = false
 position = Vector2(0, -8)
 color = Color(1, 1, 0, 1)
 polygon = PackedVector2Array(40, 56, 48, 40, 16, 32, 16, 8, -8, 8, 0, 48)
+
+[node name="Sprite2D" type="Sprite2D" parent="LeftArm"]
+position = Vector2(32, 40)
+scale = Vector2(0.07, 0.07)
+texture = ExtResource("3_kq7hj")
+offset = Vector2(64, -2.97)
 
 [node name="LeftLeg" type="Node2D" parent="."]
 position = Vector2(8, 128)
 
 [node name="Polygon2D" type="Polygon2D" parent="LeftLeg"]
+visible = false
 color = Color(0.830617, 0.000268377, 0.759412, 1)
 offset = Vector2(0, -128)
 polygon = PackedVector2Array(-16, 128, 8, 128, 16, 96, 0, 64, -16, 64, 0, 96)
 
+[node name="Sprite2D" type="Sprite2D" parent="LeftLeg"]
+position = Vector2(8, -40)
+scale = Vector2(0.07, 0.07)
+texture = ExtResource("4_7iw6i")
+offset = Vector2(14.28, 47.365)
+
 [node name="Body" type="Node2D" parent="."]
 
 [node name="Polygon2D" type="Polygon2D" parent="Body"]
+visible = false
 color = Color(1, 0.0823529, 0, 1)
 polygon = PackedVector2Array(-24, 64, 8, 64, 32, 8, -8, 8)
+
+[node name="Sprite2D" type="Sprite2D" parent="Body"]
+position = Vector2(8, 40)
+scale = Vector2(0.07, 0.07)
+texture = ExtResource("5_l1rcp")
+offset = Vector2(-5.035, 58.74)
 
 [node name="RightLeg" type="Node2D" parent="."]
 position = Vector2(-32, 136)
 
 [node name="Polygon2D" type="Polygon2D" parent="RightLeg"]
+visible = false
 color = Color(1, 0.619608, 0, 1)
 offset = Vector2(32, -136)
 polygon = PackedVector2Array(-48, 136, -24, 136, 0, 96, -8, 64, -24, 64, -24, 96)
+
+[node name="Sprite2D" type="Sprite2D" parent="RightLeg"]
+position = Vector2(16, -32)
+scale = Vector2(0.07, 0.07)
+texture = ExtResource("2_ejsiy")
+offset = Vector2(-33.38, -66.555)
 
 [node name="Head" type="Node2D" parent="."]
 position = Vector2(8, 8)
 
 [node name="Polygon2D" type="Polygon2D" parent="Head"]
+visible = false
 color = Color(0.0509804, 0, 1, 1)
 polygon = PackedVector2Array(0, 0, 24, 0, 32, -32, 0, -32)
+
+[node name="Sprite2D" type="Sprite2D" parent="Head"]
+position = Vector2(16, -8)
+scale = Vector2(0.07, 0.07)
+texture = ExtResource("8_wbia7")
+offset = Vector2(-22.105, -46.835)
 
 [node name="RightArm" type="Node2D" parent="."]
 position = Vector2(-16, 16)
 
 [node name="Polygon2D" type="Polygon2D" parent="RightArm"]
+visible = false
 position = Vector2(16, -8)
 rotation = -0.465421
 color = Color(0, 1, 0, 1)
 polygon = PackedVector2Array(-24, 72, 0, 72, -24, 32, 8, 8, 0, 0, -40, 32)
+
+[node name="Sprite2D" type="Sprite2D" parent="RightArm"]
+position = Vector2(8, 32)
+scale = Vector2(0.07, 0.07)
+texture = ExtResource("4_reotu")
+offset = Vector2(30.93, 23.095)
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="."]
 libraries = {
