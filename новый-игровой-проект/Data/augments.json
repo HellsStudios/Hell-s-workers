@@ -1,0 +1,34 @@
+{
+  "augments": {
+	"atk_up_s": {
+	  "name": "Клеймо ярости",
+	  "cost": 2,
+	  "desc": "ATK +5. Малое постоянное усиление.",
+	  "effects": { "stat_mod": { "attack": 5 } }
+	},
+	"hp_up_s": {
+	  "name": "Кровавый оброк",
+	  "cost": 2,
+	  "desc": "MAX HP +15. Малое постоянное усиление.",
+	  "effects": { "stat_mod": { "max_health": 15 } }
+	},
+	"start_barrier": {
+	  "name": "Договор защиты",
+	  "cost": 3,
+	  "desc": "В начале боя даёт барьер (на 2 хода).",
+	  "effects": { "on_battle_start": ["barrier_2"] }
+	},
+	"basic_boost": {
+	  "name": "Клинок первородного",
+	  "cost": 3,
+	  "desc": "Базовая атака наносит +25% урона.",
+	  "effects": { "basic_attack_mult": 1.25 }
+	},
+	"enrage_bonus": {
+	  "name": "Жажда страданий",
+	  "cost": 4,
+	  "desc": "Если на герое негативный эффект — урон +20%.",
+	  "effects": { "cond": "has_negative", "damage_mult": 1.2 }
+	}
+  }
+}

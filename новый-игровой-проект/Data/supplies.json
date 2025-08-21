@@ -1,0 +1,12 @@
+{
+  "categories": {
+	"food": "Продукты",
+	"veg":  "Овощи"
+  },
+  "supplies": {
+	"cereal_box":   { "name": "Сухой завтрак (уп.)", "category": "food", "stack": 99, "desc": "Хлопья из зерновых. Быстрый завтрак.", "icon": "cereal_box" },
+	"milk_pack":    { "name": "Молоко (уп.)",        "category": "food", "stack": 99, "desc": "Пастеризованное молоко 1л.",          "icon": "milk_pack" },
+	"nuggets_pack": { "name": "Наггетсы (уп.)",      "category": "food", "stack": 99, "desc": "Куриные наггетсы, полуфабрикат.",     "icon": "nuggets_pack" },
+	"carrot":       { "name": "Морковь",             "category": "veg",  "stack": 99, "desc": "Обычная морковь.",                     "icon": "carrot" }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "quests": [
+	{
+	  "id": "q_intro",
+	  "name": "Первое поручение",
+	  "desc": "Найдите кладовщика и заберите посылку.",
+	  "available": true,
+	  "completed": false,
+	  "rewards": {
+		"krestli": 50,
+		"items": [
+		  {"id":"sandwich", "count":2}
+		]
+	  }
+	},
+	{
+	  "id": "q_side_001",
+	  "name": "Запас лекарств",
+	  "desc": "Принести 3 малых зелий.",
+	  "available": false,
+	  "completed": false,
+	  "rewards": {
+		"krestli": 25,
+		"items": []
+	  }
+	}
+  ]
+}
