@@ -17,6 +17,18 @@ var _cam_phys_prev := true
 @onready var manage_menu: PopupPanel = $UI/ManagementMenu
 @onready var manage_btn: Button = $UI/TopBar/ManageButton
 
+
+
+func _on_room_1_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		$Camera2D.set_drag_enabled(false)
+		get_viewport().set_input_as_handled()
+
+		var panel := $Room1PopupPanel
+		# переводим мировые координаты в экранные (как у вас):
+		var scr_pos = ($Camera2D/Room1.global_position - get_viewport().get_canvas_transform().origin).floor()
+		panel.open_from(scr_pos, 0.30)
+
 func _start_input_quarantine(sec: float = 0.30) -> void:
 	# глушим мир на sec секунд
 	_input_quarantine_t = max(_input_quarantine_t, sec)
@@ -83,18 +95,6 @@ func _on_management_menu_popup_hide() -> void:
 	cam.set_drag_enabled(true)
 	cam.cancel_drag()
 
-
-func _on_room_1_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		$Camera2D.set_drag_enabled(false)                # ← ВЫКЛ. drag
-		get_viewport().set_input_as_handled()            # ← стопим всплытие в _unhandled_input камеры
-
-		var panel := $Room1PopupPanel
-		panel.position = $Camera2D/Room1.global_position - get_viewport().get_canvas_transform().origin
-		panel.size = Vector2i(0, 0)
-		panel.visible = true
-		var tw := create_tween()
-		tw.tween_property(panel, "size", Vector2i(220, 140), 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func _on_room_2_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:   if event is InputEventMouseButton and event.pressed:

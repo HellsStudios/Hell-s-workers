@@ -2430,6 +2430,7 @@ func spawn_party() -> void:
 		var slot: Node2D = hero_slots.get_child(i)
 		var hero: Node2D  = CHAR_SCN.instantiate()
 		slot.add_child(hero)
+		GameManager.apply_battle_start_augments(hero, hero.nick)
 		hero.position = Vector2.ZERO
 		hero.init_from_dict(party_data[i])
 		heroes.append(hero)
@@ -2769,10 +2770,10 @@ func _do_support(user: Node2D, target: Node2D, ability: Dictionary) -> void:
 	# Выбор клипа
 	var clip := "idle"
 	if user.anim != null:
-		if user.anim.has_animation("cast"):
+		if user.anim.has_animation("item use"):
+			clip = "item use"
+		elif user.anim.has_animation("cast"):
 			clip = "cast"
-		elif user.anim.has_animation("skill"):
-			clip = "skill"
 	_play_if_has(user.anim, clip)
 
 	# Момент применения ~30% длины клипа

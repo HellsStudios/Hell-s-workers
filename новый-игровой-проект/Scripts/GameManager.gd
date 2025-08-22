@@ -81,6 +81,253 @@ const EQUIP_SKILL_LIMIT := 6
 # ============ CODEx / ARCHIVE ============
 signal codex_changed
 
+# --- Контейнер/холодильник (обёртки под старые имена) ---
+signal container_changed
+const CONTAINER_TTL_PHASES := 2
+
+func _fridge_add(meal_id: String, count: int, ttl_phases: int = CONTAINER_TTL_PHASES) -> int:
+	if meal_id == "" or count <= 0:
+		return 0
+	var exp_day := day
+	var exp_phase := current_phase + ttl_phases
+	while exp_phase >= phase_names.size():
+		exp_phase -= phase_names.size()
+		exp_day += 1
+	fridge.append({
+		"meal": meal_id,
+		"portions": count,
+		"expires_day": exp_day,
+		"expires_phase": exp_phase
+	})
+	emit_signal("container_changed")
+	return count
+
+func _fridge_take(meal_id: String, count: int) -> int:
+	if count <= 0:
+		return 0
+	var need := count
+	var taken := 0
+	var keep: Array = []
+	for e in fridge:
+		var mid := str(e.get("meal",""))
+		var c := int(e.get("portions",0))
+		var d := int(e.get("expires_day",0))
+		var p := int(e.get("expires_phase",0))
+		if mid == meal_id and need > 0 and c > 0:
+			var take = min(c, need)
+			c -= take
+			need -= take
+			taken += take
+		if c > 0:
+			keep.append({"meal": mid, "portions": c, "expires_day": d, "expires_phase": p})
+	fridge = keep
+	if taken > 0:
+		emit_signal("container_changed")
+	return taken
+
+func fridge_count(meal_id: String) -> int:
+	var s := 0
+	for e in fridge:
+		if str(e.get("meal","")) == meal_id:
+			s += int(e.get("portions",0))
+	return s
+
+func activate_from_fridge(meal_id: String, count: int) -> bool:
+	if meal_id == "" or count <= 0:
+		return false
+	if not pending_meal.is_empty() and int(pending_meal.get("portions",0)) > 0:
+		return false
+	var took := _fridge_take(meal_id, count)
+	if took <= 0:
+		return false
+	pending_meal = {"meal": meal_id, "portions": took, "total": took, "from_container": true}
+	emit_signal("cooking_changed")
+	return true
+
+# --- Совместимость со старыми именами:
+func container_add(meal_id: String, count: int, _ttl_days: int = 2) -> int:
+	return _fridge_add(meal_id, count, CONTAINER_TTL_PHASES)
+
+func container_take(meal_id: String, count: int) -> int:
+	return _fridge_take(meal_id, count)
+
+func container_count(meal_id: String) -> int:
+	return fridge_count(meal_id)
+
+func container_all() -> Dictionary:
+	var m: Dictionary = {}
+	for e in fridge:
+		var mid := str(e.get("meal",""))
+		var c := int(e.get("portions",0))
+		m[mid] = int(m.get(mid, 0)) + c
+	return m
+
+func container_decay_end_of_day() -> void:
+	culling_spoiled_food()
+
+func activate_from_container(meal_id: String, count: int) -> bool:
+	return activate_from_fridge(meal_id, count)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# AUGMENT EFFECTS — RUNTIME HOOKS
+# Ожидаемый формат в JSON:
+#  { "effects": {
+#      "stat_mod": { "attack": +5, "max_health": +15, ... },
+#      "on_battle_start": ["barrier_2", ...],
+#      "basic_attack_mult": 1.25,
+#      "cond": "has_negative",
+#      "damage_mult": 1.2
+#  } }
+# ─────────────────────────────────────────────────────────────────────
+
+# ─── КУХНЯ / ЕДА ─────────────────────────────────────────────────────
+const RECIPES_PATH := "res://data/recipes.json"
+const MEALS_PATH   := "res://data/meals.json"
+
+var recipes_db: Dictionary = {}    # id -> def из recipes.json
+var meals_db:   Dictionary = {}    # id -> {satiety:int, tags:Array}
+
+# сытость 0..100
+var hero_satiety: Dictionary = {}  # name -> int
+# контейнеры/холодильник (ограниченный срок годности)
+# [{meal:String, portions:int, expires_day:int, expires_phase:int}]
+var fridge: Array = []
+
+# партия, только что приготовленная, ожидание распределения
+# {meal:String, portions:int}
+var pending_meal: Dictionary = {}
+
+# предпочтения/ограничения героев
+var food_prefs := {
+	"Berit": {"like":["chicken"], "dislike":["cheap","plain"], "forbid":[]},
+	"Sally": {"like":[], "dislike":[], "forbid":["meat"]}, # вегетарианец
+	"Dante": {"like":["cheese","weird"], "dislike":["soup"], "forbid":[]}
+}
+
+# общий ресурс «Эфирия» тут не нужен; готовка к нему не привязана.
+
+signal cooking_changed   # что-то в кулинарии поменялось (партия/холодильник/сытость)
+
+
+# Собирает эффекты всех активных аугментов героя в агрегат
+func _aug_collect(hero_name: String) -> Dictionary:
+	var out := {
+		"stat_mod": {},                 # additively merge
+		"start_effects": [],            # array of effect ids
+		"basic_mult": 1.0,              # product
+		"cond_rules": []                # [{cond:String, mult:float}]
+	}
+	var active: Array = get_hero_active_augments(hero_name)
+	for id in active:
+		var def := get_augment_def(String(id))
+		if typeof(def) != TYPE_DICTIONARY: continue
+		var eff = def.get("effects", {})
+		if typeof(eff) != TYPE_DICTIONARY: continue
+
+		# stat_mod
+		var sm = eff.get("stat_mod", {})
+		if typeof(sm) == TYPE_DICTIONARY:
+			for k in sm.keys():
+				var add := float(sm[k])
+				out["stat_mod"][k] = float(out["stat_mod"].get(k, 0.0)) + add
+
+		# on_battle_start
+		var start_arr = eff.get("on_battle_start", [])
+		if typeof(start_arr) == TYPE_ARRAY:
+			for e in start_arr:
+				out["start_effects"].append(String(e))
+
+		# basic_attack_mult
+		if eff.has("basic_attack_mult"):
+			out["basic_mult"] = float(out["basic_mult"]) * float(eff["basic_attack_mult"])
+
+		# условные мультипликаторы урона
+		if eff.has("damage_mult"):
+			out["cond_rules"].append({
+				"cond": String(eff.get("cond","")), 
+				"mult": float(eff.get("damage_mult", 1.0))
+			})
+	return out
+
+# Применяет stat_mod к словарю статов бойца и возвращает НОВУЮ копию
+func aug_apply_to_stats(hero_name: String, base_stats: Dictionary) -> Dictionary:
+	var agg := _aug_collect(hero_name)
+	var sm: Dictionary = agg["stat_mod"]
+	var out := base_stats.duplicate(true)
+
+	for k in sm.keys():
+		var add := int(round(float(sm[k])))
+		# поддерживаем обе схемы ключей
+		if k == "max_hp" and not out.has("max_hp") and out.has("max_health"):
+			out["max_health"] = int(out.get("max_health", 0)) + add
+		else:
+			out[k] = int(out.get(k, 0)) + add
+
+	# если увеличили максимум — можно, при желании, синхронно поднять текущее значение
+	if out.has("max_health") and out.has("health"):
+		out["health"] = min(int(out["health"]), int(out["max_health"]))
+	if out.has("max_hp") and out.has("hp"):
+		out["hp"] = min(int(out["hp"]), int(out["max_hp"]))
+
+	return out
+
+# Эффекты, которые нужно навесить в начале боя (id-шники из effects.json)
+func get_aug_start_effects(hero_name: String) -> Array:
+	return Array(_aug_collect(hero_name)["start_effects"]).duplicate()
+
+# Множитель урона с учётом basic_attack_mult и условных правил
+# ctx:
+#   { "is_basic": bool,
+#     "self_has_negative": bool,    # на атакующем есть негатив
+#     "target_has_negative": bool } # (на всякий) на цели есть негатив
+func aug_damage_mult(hero_name: String, ctx: Dictionary) -> float:
+	var agg := _aug_collect(hero_name)
+	var m := float(agg["basic_mult"])
+	if not bool(ctx.get("is_basic", false)):
+		# basic_mult действует только на базовую атаку
+		m = 1.0
+	# условные множители
+	for rule in Array(agg["cond_rules"]):
+		var cond := String(rule.get("cond",""))
+		var ok := _aug_check_cond(cond, ctx)
+		if ok:
+			m *= float(rule.get("mult", 1.0))
+	return max(m, 0.0)
+
+func _aug_check_cond(cond: String, ctx: Dictionary) -> bool:
+	match cond:
+		"has_negative":
+			return bool(ctx.get("self_has_negative", false))
+		"target_has_negative":
+			return bool(ctx.get("target_has_negative", false))
+		"":
+			return true # без условия — всегда
+		_:
+			# неизвестные условия считаем ложью
+			return false
+
+# Удобный предпросмотр для UI (меню/карточка героя)
+func get_augmented_stats_preview(hero_name: String) -> Dictionary:
+	var d = all_heroes.get(hero_name, {})
+	if typeof(d) != TYPE_DICTIONARY:
+		return {}
+	return aug_apply_to_stats(hero_name, d)
+
+# Помощник для старта боя: накинуть стартовые эффекты на узел бойца
+# Подставь внутрь вызов твоего метода добавления эффектов.
+func apply_battle_start_augments(actor: Node, hero_name: String) -> void:
+	for eff_id in get_aug_start_effects(hero_name):
+		var proto := get_effect_proto(eff_id) # из effects.json уже загружено
+		if not proto.is_empty():
+			# ↓↓↓ адаптируй под свой API бойца ↓↓↓
+			if "add_effect" in actor:
+				actor.add_effect(proto)
+			elif "apply_effect" in actor:
+				actor.apply_effect(proto)
+			# ↑↑↑ адаптируй под свой API бойца ↑↑↑
+
+
 # ------------- Quests -------------
 func _load_quests_from_json(path: String) -> void:
 	if not FileAccess.file_exists(path):
@@ -693,6 +940,237 @@ func load_enemies_db(path: String = "res://Data/enemies.json") -> void:
 
 func get_enemy_def(id: String) -> Dictionary:
 	return enemies_db.get(id, {})
+	
+func _load_recipes() -> void:
+	recipes_db = {}
+	if FileAccess.file_exists(RECIPES_PATH):
+		var s := FileAccess.get_file_as_string(RECIPES_PATH)
+		var j = JSON.parse_string(s)
+		if typeof(j) == TYPE_DICTIONARY:
+			recipes_db = j.get("recipes", {})
+
+func _load_meals() -> void:
+	meals_db = {}
+	if FileAccess.file_exists(MEALS_PATH):
+		var s := FileAccess.get_file_as_string(MEALS_PATH)
+		var j = JSON.parse_string(s)
+		if typeof(j) == TYPE_DICTIONARY:
+			meals_db = j.get("meals", {})
+
+func _init_satiety_defaults() -> void:
+	for n in party_names:
+		if not hero_satiety.has(n):
+			hero_satiety[n] = 50
+
+# Хранилище припасов: id -> int. Если у тебя уже есть – используй его.
+var supplies: Dictionary = {
+	"cereal_pack": 4,
+	"milk_pack": 2,
+	"nuggets_pack": 1,
+	"carrot": 1,
+	# половинки (для примера пусто)
+	"cereal_half": 0,
+	"milk_half": 0
+}
+
+func supply_get(id: String) -> float:
+	return float(supplies.get(id, 0))
+
+func supply_add(id: String, qty: float) -> void:
+	if qty <= 0: return
+	supplies[id] = float(supplies.get(id, 0)) + qty
+	emit_signal("supplies_changed")
+
+func supply_can_take(req: Dictionary) -> bool:
+	for id in req.keys():
+		var need := float(req[id])
+		if float(supplies.get(id, 0)) < need:
+			return false
+	return true
+
+func supply_take(req: Dictionary) -> bool:
+	if not supply_can_take(req): return false
+	for id in req.keys():
+		var need := float(req[id])
+		supplies[id] = float(supplies.get(id, 0)) - need
+		if supplies[id] <= 0.0001:
+			supplies.erase(id)
+	emit_signal("supplies_changed")
+	return true
+
+func recipe_defs() -> Array:
+	return recipes_db.keys()
+
+func get_recipe_def(id: String) -> Dictionary:
+	return recipes_db.get(id, {})
+
+func get_meal_def(id: String) -> Dictionary:
+	return meals_db.get(id, {})
+
+# можно ли приготовить N порций (скалируем inputs)
+func can_cook(recipe_id: String, portions: int) -> bool:
+	var r := get_recipe_def(recipe_id)
+	if r.is_empty(): return false
+	var base_port := int(r.get("portions", 1))
+	if base_port <= 0: return false
+	var scale := float(portions) / float(base_port)
+	var need := {}
+	for e in r.get("inputs", []):
+		if typeof(e) != TYPE_DICTIONARY: continue
+		var sid := str(e.get("id",""))
+		var qty := float(e.get("qty", 0.0)) * scale
+		need[sid] = float(need.get(sid, 0.0)) + qty
+	return supply_can_take(need)
+
+# вернёт {need:Dictionary, leftovers:Array<{id,qty}>}
+func preview_cook(recipe_id: String, portions: int) -> Dictionary:
+	var r := get_recipe_def(recipe_id)
+	if r.is_empty(): return {}
+	var base_port := int(r.get("portions", 1))
+	if base_port <= 0: base_port = 1
+	var scale := float(portions) / float(base_port)
+	var need := {}
+	for e in r.get("inputs", []):
+		var sid := str(e.get("id",""))
+		var qty := float(e.get("qty", 0.0)) * scale
+		need[sid] = float(need.get(sid, 0.0)) + qty
+	var lo: Array = []
+	for e in r.get("leftovers", []):
+		lo.append({"id": str(e.get("id","")), "qty": float(e.get("qty", 0.0)) * scale})
+	return {"need": need, "leftovers": lo}
+
+# собственно готовим
+func cook(recipe_id: String, portions: int) -> bool:
+	if portions <= 0:
+		return false
+	if not can_cook(recipe_id, portions):
+		return false
+
+	# 1) Если уже есть «живая» партия — целиком отправляем её в контейнер (TTL 2 фазы)
+	if not pending_meal.is_empty():
+		var prev_id := str(pending_meal.get("meal",""))
+		var prev_left := int(pending_meal.get("portions",0))
+		if prev_id != "" and prev_left > 0:
+			_fridge_add(prev_id, prev_left, CONTAINER_TTL_PHASES)
+		pending_meal.clear()
+
+	# 2) Спишем ресурсы и создадим новую партию
+	var pr := preview_cook(recipe_id, portions)
+	var need: Dictionary = pr.get("need", {})
+	if not supply_take(need):   # твоя сигнатура: принимает словарь id->qty
+		return false
+
+	for e in pr.get("leftovers", []):
+		var sid := str(e.get("id",""))
+		var qty := float(e.get("qty", 0.0))
+		if sid != "" and qty > 0.0:
+			supply_add(sid, qty)
+
+	pending_meal = {"meal": recipe_id, "portions": portions, "total": portions}
+	emit_signal("cooking_changed")
+	return true
+
+
+func _meal_tags(meal_id: String) -> Array:
+	var d := get_meal_def(meal_id)
+	if typeof(d) == TYPE_DICTIONARY:
+		return Array(d.get("tags", []))
+	return []
+
+func _likes(name: String) -> Array:
+	return Array(food_prefs.get(name, {}).get("like", []))
+func _dislikes(name: String) -> Array:
+	return Array(food_prefs.get(name, {}).get("dislike", []))
+func _forbid(name: String) -> Array:
+	return Array(food_prefs.get(name, {}).get("forbid", []))
+
+func can_hero_eat(name: String, meal_id: String) -> bool:
+	var tags := _meal_tags(meal_id)
+	for t in _forbid(name):
+		if tags.has(t): return false
+	# спец-кейс для Данте — может «weird/nonfood» в будущем
+	return true
+
+# модификатор «нравится/не нравится»
+func meal_satiety_mod(name: String, meal_id: String) -> float:
+	var tags := _meal_tags(meal_id)
+	var mod := 1.0
+	for t in _likes(name):
+		if tags.has(t): mod *= 1.25
+	for t in _dislikes(name):
+		if tags.has(t): mod *= 0.8
+	return mod
+
+func meal_satiety_value(meal_id: String) -> int:
+	var d := get_meal_def(meal_id)
+	return int(d.get("satiety", 15))
+
+# Раздать приготовленные порции: assign = {hero:String -> int}, to_container:int
+# Контейнеры кладём с «сроком годности» на 2 фазы.
+func distribute_pending(assign: Dictionary, to_container: int) -> Dictionary:
+	var res := {"served": {}, "rejected": [], "left": 0, "stored": 0}
+	if pending_meal.is_empty():
+		return res
+	var meal := str(pending_meal.get("meal",""))
+	var left := int(pending_meal.get("portions", 0))
+	if left <= 0:
+		return res
+
+	# Кормим
+	for hero in assign.keys():
+		var want := int(assign[hero])
+		if want <= 0: continue
+		if not can_hero_eat(hero, meal):
+			res["rejected"].append(hero)
+			continue
+		var give = min(want, left)
+		if give <= 0: break
+
+		var base := meal_satiety_value(meal)
+		var mod  := meal_satiety_mod(hero, meal)
+		var add  = int(round(float(base) * mod)) * give
+
+		hero_satiety[hero] = clampi(int(hero_satiety.get(hero, 50)) + add, 0, 100)
+		res["served"][hero] = give
+		left -= give
+
+	# В контейнер (если остались)
+	var store = min(int(to_container), left)
+	if store > 0:
+		var exp_day := day
+		var exp_phase := current_phase + 2
+		while exp_phase >= phase_names.size():
+			exp_phase -= phase_names.size()
+			exp_day += 1
+		fridge.append({"meal": meal, "portions": store, "expires_day": exp_day, "expires_phase": exp_phase})
+		left -= store
+		res["stored"] = store
+
+	res["left"] = left
+	pending_meal = {"meal": meal, "portions": left}
+	emit_signal("cooking_changed")
+	return res
+
+func culling_spoiled_food() -> void:
+	var keep: Array = []
+	for e in fridge:
+		var d := int(e.get("expires_day", 0))
+		var p := int(e.get("expires_phase", 0))
+		var spoil := (day > d) or (day == d and current_phase > p)
+		if not spoil:
+			keep.append(e)
+	fridge = keep
+	emit_signal("cooking_changed")
+
+func advance_phase_after_meal() -> void:
+	# вызывай после нажатия «Накормить» в попапе
+	current_phase += 1
+	if current_phase >= phase_names.size():
+		current_phase = 0
+		day += 1
+	culling_spoiled_food()
+
+
 
 func _ready() -> void:
 	load_heroes("res://Data/characters.json")
@@ -719,6 +1197,10 @@ func _ready() -> void:
 	unlock_augment("start_barrier")
 	etheria = 2
 	emit_signal("augments_changed")
+		# кухня
+	_load_recipes()
+	_load_meals()
+	_init_satiety_defaults()
 
 # ====== HERO PACKS ============================================================
 func _build_hero_bags_from_pack() -> void:
@@ -859,9 +1341,12 @@ func make_party_dicts() -> Array:
 	for name in party_names:
 		if all_heroes.has(name):
 			var d: Dictionary = all_heroes[name].duplicate(true)
+			# ← добавляем моды статов от аугментов
+			d = aug_apply_to_stats(name, d)
+
 			d["nick"] = d.get("nick", name)
 			d["team"] = "hero"
-			d["hp"] = d.get("max_hp", 100)
+			d["hp"] = d.get("max_hp", d.get("max_health", 100))
 			d["mana"] = d.get("max_mana", 0)
 			d["stamina"] = d.get("max_stamina", 0)
 			out.append(d)
