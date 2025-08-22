@@ -1,0 +1,7 @@
+{
+  "meals": {
+	"cereal_bowl":  { "satiety": 18, "tags": ["vegetarian", "cheap", "plain"] },
+	"nuggets_plate":{ "satiety": 25, "tags": ["meat", "chicken"] },
+	"carrot_soup":  { "satiety": 22, "tags": ["vegetarian", "soup"] }
+  }
+}

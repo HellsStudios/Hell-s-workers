@@ -1,0 +1,26 @@
+{
+  "recipes": {
+	"cereal_bowl": {
+	  "name": "Хлопья с молоком",
+	  "desc": "Классический завтрак.",
+	  "inputs": [{"id": "cereal_pack", "qty": 1.0}, {"id": "milk_pack", "qty": 1.0}],
+	  "portions": 3,
+	  "leftovers": [{"id": "cereal_half", "qty": 1}, {"id": "milk_half", "qty": 1}],
+	  "tags": ["vegetarian", "cheap", "plain"]
+	},
+	"nuggets_plate": {
+	  "name": "Наггетсы с морковью",
+	  "desc": "Хрустящая курочка с гарниром.",
+	  "inputs": [{"id": "nuggets_pack", "qty": 1.0}, {"id": "carrot", "qty": 1.0}],
+	  "portions": 2,
+	  "tags": ["meat", "chicken"]
+	},
+	"carrot_soup": {
+	  "name": "Морковный суп",
+	  "desc": "Нежный крем-суп из моркови.",
+	  "inputs": [{"id": "carrot", "qty": 2.0}, {"id": "milk_pack", "qty": 0.5}],
+	  "portions": 2,
+	  "tags": ["vegetarian", "soup"]
+	}
+  }
+}

@@ -315,8 +315,9 @@ func _ready() -> void:
 		aug_add_cap.pressed.connect(_on_aug_add_cap)
 
 	# реакция на глобальные изменения
-	if GameManager.has_signal("augments_changed") and not GameManager.augments_changed.is_connected(_refresh_aug_tab):
-		GameManager.augments_changed.connect(_refresh_aug_tab)
+	if GameManager.has_signal("augments_changed") \
+	and not GameManager.augments_changed.is_connected(_refresh_aug_tab):
+		GameManager.augments_changed.connect(_refresh_aug_tab, Object.CONNECT_DEFERRED)
 
 	# первичная отрисовка
 	_refresh_aug_tab()

@@ -1,9 +1,10 @@
-[gd_scene load_steps=9 format=3 uid="uid://cdw4xi8jdmhhr"]
+[gd_scene load_steps=10 format=3 uid="uid://cdw4xi8jdmhhr"]
 
 [ext_resource type="Script" uid="uid://2v4dau4mmixv" path="res://Scripts/mansion.gd" id="1_5jwi0"]
 [ext_resource type="Script" uid="uid://brs16ogkadj40" path="res://Scripts/camera_2d.gd" id="2_exq5i"]
 [ext_resource type="Script" uid="uid://c7oate8n5pgwg" path="res://Scenes/management_menu.gd" id="3_e6st1"]
 [ext_resource type="Texture2D" uid="uid://b1ii2cvhql6n" path="res://Assets/bg/berit_room.png" id="3_umc7y"]
+[ext_resource type="Script" uid="uid://hyflqkdsrx4d" path="res://Scenes/room_1_popup_panel.gd" id="4_jd5lx"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_umc7y"]
 size = Vector2(384, 192)
@@ -75,20 +76,206 @@ range_z_min = 0
 range_z_max = 0
 
 [node name="Room1PopupPanel" type="PopupPanel" parent="."]
-size = Vector2i(272, 100)
+unique_name_in_owner = true
+size = Vector2i(1061, 405)
+visible = true
+script = ExtResource("4_jd5lx")
 
-[node name="ButtonExit" type="Button" parent="Room1PopupPanel"]
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
+[node name="VBoxContainer" type="VBoxContainer" parent="Room1PopupPanel"]
 offset_left = 4.0
 offset_top = 4.0
-offset_right = 268.0
-offset_bottom = 96.0
-grow_horizontal = 0
+offset_right = 1057.0
+offset_bottom = 401.0
+alignment = 1
+
+[node name="HBoxContainer2" type="HBoxContainer" parent="Room1PopupPanel/VBoxContainer"]
+layout_mode = 2
+alignment = 2
+
+[node name="ButtonExit" type="Button" parent="Room1PopupPanel/VBoxContainer/HBoxContainer2"]
+unique_name_in_owner = true
+layout_mode = 2
 text = "x"
 icon = SubResource("ImageTexture_5jwi0")
 flat = true
+
+[node name="HBoxContainer" type="HBoxContainer" parent="Room1PopupPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="VBoxContainer5" type="VBoxContainer" parent="Room1PopupPanel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer5"]
+layout_mode = 2
+text = "Рецепты"
+horizontal_alignment = 1
+
+[node name="RecipeList" type="ItemList" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer5"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 300)
+layout_mode = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Room1PopupPanel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Label" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer"]
+layout_mode = 2
+text = "Порции"
+
+[node name="Portions" type="SpinBox" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = 1.0
+value = 1.0
+
+[node name="VBoxContainer6" type="VBoxContainer" parent="Room1PopupPanel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer6"]
+layout_mode = 2
+text = "Описание (Рецепт)"
+horizontal_alignment = 1
+
+[node name="NeedLabel" type="RichTextLabel" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer6"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 250)
+layout_mode = 2
+
+[node name="CookButton" type="Button" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer6"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Приготовить"
+
+[node name="VBoxContainer4" type="VBoxContainer" parent="Room1PopupPanel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer4"]
+layout_mode = 2
+text = "Холодильник"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="FridgeDrop" type="OptionButton" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer4"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="FridgeTakeSpin" type="SpinBox" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer4"]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = 1.0
+value = 1.0
+
+[node name="FridgeTakeButton" type="Button" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer4"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Достать"
+
+[node name="VBoxContainer7" type="VBoxContainer" parent="Room1PopupPanel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer7"]
+layout_mode = 2
+text = "Стол"
+horizontal_alignment = 1
+
+[node name="BatchInfo" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer7"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 300)
+layout_mode = 2
+autowrap_mode = 2
+
+[node name="VBoxContainer2" type="VBoxContainer" parent="Room1PopupPanel/VBoxContainer/HBoxContainer"]
+custom_minimum_size = Vector2(50, 0)
+layout_mode = 2
+alignment = 1
+
+[node name="Label" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2"]
+layout_mode = 2
+text = "Партия"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="AssignGrid" type="GridContainer" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2"]
+unique_name_in_owner = true
+layout_mode = 2
+columns = 2
+
+[node name="H0Name" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(50, 0)
+layout_mode = 2
+
+[node name="H0Cnt" type="SpinBox" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="H1Name" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="H1Cnt" type="SpinBox" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="H2Name" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="H2Cnt" type="SpinBox" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="H3Name" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="H3Cnt" type="SpinBox" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="H4Name" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="H4Cnt" type="SpinBox" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="H5Name" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="H5Cnt" type="SpinBox" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="H6Name" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="H6Cnt" type="SpinBox" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2/AssignGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="ServeButton" type="Button" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer2"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(20, 0)
+layout_mode = 2
+text = "Сервировка"
+
+[node name="VBoxContainer3" type="VBoxContainer" parent="Room1PopupPanel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Label" type="Label" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer3"]
+layout_mode = 2
+text = "Контейнер"
+horizontal_alignment = 1
+
+[node name="StoreSpin" type="SpinBox" parent="Room1PopupPanel/VBoxContainer/HBoxContainer/VBoxContainer3"]
+unique_name_in_owner = true
+layout_mode = 2
 
 [node name="UI" type="CanvasLayer" parent="."]
 
@@ -155,7 +342,6 @@ layout_mode = 2
 [node name="ManagementMenu" type="PopupPanel" parent="UI"]
 initial_position = 4
 size = Vector2i(900, 560)
-visible = true
 script = ExtResource("3_e6st1")
 
 [node name="MarginContainer" type="MarginContainer" parent="UI/ManagementMenu"]
@@ -590,7 +776,7 @@ bbcode_enabled = true
 [connection signal="input_event" from="Camera2D/Room3" to="." method="_on_room_3_input_event"]
 [connection signal="input_event" from="Camera2D/Room1" to="." method="_on_room_1_input_event"]
 [connection signal="popup_hide" from="Room1PopupPanel" to="." method="_on_room_1_popup_panel_popup_hide"]
-[connection signal="pressed" from="Room1PopupPanel/ButtonExit" to="." method="_on_button_exit_pressed"]
+[connection signal="pressed" from="Room1PopupPanel/VBoxContainer/HBoxContainer2/ButtonExit" to="." method="_on_button_exit_pressed"]
 [connection signal="button_down" from="UI/PanelDay/NextDayButton" to="." method="_on_NextPhaseButton_pressed"]
 [connection signal="pressed" from="UI/PanelDay/NextDayButton" to="." method="_on_next_day_button_pressed"]
 [connection signal="pressed" from="UI/TopBar/ManageButton" to="." method="_on_manage_button_pressed"]
