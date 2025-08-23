@@ -1,4 +1,43 @@
 {
+  "task_defs": {
+	"deliver_box": {
+	  "title": "Доставка посылки",
+	  "duration_slots": 8,                         
+	  "rewards": {
+		"krestli": 40,
+		"etheria": 1,
+		"items": [ {"id":"sandwich","count":1} ],
+		"supplies": [ {"id":"milk_pack","count":1} ],
+		"qual_xp": { "courier": 30 }               
+	  },
+	  "base_cost": { "satiety": 8, "stamina": 12 }, 
+	  "require": { "qual": {"courier": 1}, "forbid_conds": ["injury"] },
+	  "affinity": {                                
+		"mood": { "per10": 2 },                     
+		"conds": { "injury": -20, "dante_low_batt": -10 }
+	  },
+	  "events": [
+		{
+		  "id": "late_train",
+		  "at_rel_slot": 4,                         
+		  "text": "Поезд задерживается. Рискуете срезать маршрут через склад?",
+		  "options": [
+			{"text":"Срезать", "risk": 15, "qual_need":{"courier":2},
+			  "on_success":{"krestli":20,"qual_xp":{"courier":10}},
+			  "on_fail":{"cond_add":["fatigue"]} },
+			{ "text":"Ждать", "risk": 0, "on_success":{}, "on_fail":{} }
+		  ]
+		}
+	  ]
+	}
+  },
+
+  "daily_pools": {
+	"default": [
+	  {"id":"deliver_box", "chance":0.35, "min":0, "max":2}
+	]
+  },
+
   "quests": [
 	{
 	  "id": "q_intro",
@@ -6,23 +45,11 @@
 	  "desc": "Найдите кладовщика и заберите посылку.",
 	  "available": true,
 	  "completed": false,
-	  "rewards": {
-		"krestli": 50,
-		"items": [
-		  {"id":"sandwich", "count":2}
-		]
-	  }
-	},
-	{
-	  "id": "q_side_001",
-	  "name": "Запас лекарств",
-	  "desc": "Принести 3 малых зелий.",
-	  "available": false,
-	  "completed": false,
-	  "rewards": {
-		"krestli": 25,
-		"items": []
-	  }
+	  "rewards": { "krestli": 50, "items": [ {"id":"sandwich","count":2} ] },
+
+	  "tasks": [
+		{"def":"deliver_box", "count": 1, "mode": "immediate"}
+	  ]
 	}
   ]
 }

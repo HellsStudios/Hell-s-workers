@@ -1,0 +1,22 @@
+{
+  "conditions": {
+	"dante_low_batt": {
+	  "name": "Разрядка",
+	  "desc": "Энергия на нуле. В бою: нет регена маны. Вне боя — текущая мана обнуляется на смене фазы.",
+	  "stat_mod": { "attack": -3 },
+	  "on_battle_start": ["no_mana_regen"],
+	  "on_phase": { "mana": "zero" }
+	},
+	"injury": {
+	  "name": "Травма",
+	  "desc": "−10 SPD, −10% максимум HP.",
+	  "stat_mod": { "speed": -10, "max_health_pct": -0.10 }
+	},
+	"melancholy": {
+	  "name": "Хандра",
+	  "desc": "−5 ATK, настроение −20.",
+	  "stat_mod": { "attack": -5 },
+	  "mood_delta": -20
+	}
+  }
+}
