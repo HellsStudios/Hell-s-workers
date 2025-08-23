@@ -85,6 +85,313 @@ signal codex_changed
 signal container_changed
 const CONTAINER_TTL_PHASES := 2
 
+# --- TASK SYSTEM ---
+var task_defs: Dictionary = {}        # id -> деф задачи (из quests.json)
+var daily_pools: Dictionary = {}      # name -> Array[{id,chance,min,max}]
+var active_task_pool: Array = []      # [{inst_id, def_id, source:"quest"/"daily"/..., quest_id?}]
+var scheduled: Dictionary = {}        # hero -> Array[{inst_id, def_id, start:int, duration:int, progress:int}]
+var _task_inst_seq: int = 1
+var timeline_clock := { "slot": 0, "running": false, "slot_sec": 0.7 }
+
+signal task_pool_changed
+signal schedule_changed
+signal task_event(hero: String, inst_id: int, event_def: Dictionary)
+signal task_started(hero: String, inst_id: int)
+signal task_completed(hero: String, inst_id: int, outcome: Dictionary)
+
+func spawn_quest_tasks(quest_id: String) -> void:
+	var q: Dictionary = quests_all.get(quest_id, {})
+	var arr: Array = q.get("tasks", [])
+	for t in arr:
+		if typeof(t) != TYPE_DICTIONARY:
+			continue
+		var def_id := String(t.get("def",""))
+		var count := int(t.get("count", 1))
+		if def_id == "" or count <= 0:
+			continue
+		for _i in count:
+			_add_task_instance(def_id, "quest", quest_id)
+	emit_signal("task_pool_changed")
+
+
+func spawn_daily_tasks(pool_name: String = "default") -> void:
+	var spawned := 0
+	var arr: Array = daily_pools.get(pool_name, [])
+	for e in arr:
+		if typeof(e) != TYPE_DICTIONARY:
+			continue
+		var def_id := String(e.get("id",""))
+		if def_id == "":
+			continue
+		var chance := float(e.get("chance", 1.0))
+		var mn := int(e.get("min", 0))
+		var mx := int(e.get("max", 0))
+
+		var n := mn
+		while n < mx and randf() < chance:
+			n += 1
+		for _i in n:
+			_add_task_instance(def_id, "daily", "")
+			spawned += 1
+	if spawned > 0:
+		emit_signal("task_pool_changed")
+
+func has_condition(hero: String, id: String) -> bool:
+	var arr: Array = hero_conditions.get(hero, [])
+	for e in arr:
+		if String(e.get("id","")) == id:
+			return true
+	return false
+
+func get_qual_level(hero: String, q: String) -> int:
+	var store: Dictionary = hero_quals.get(hero, {})
+	var entry: Dictionary = store.get(q, {})
+	if entry.has("lvl"):
+		return int(entry["lvl"])
+	return 0
+
+
+func _add_task_instance(def_id: String, source: String, quest_id: String) -> void:
+	if not task_defs.has(def_id): return
+	var inst_id := _task_inst_seq; _task_inst_seq += 1
+	active_task_pool.append({
+		"inst_id": inst_id,
+		"def_id": def_id,
+		"source": source,
+		"quest_id": quest_id
+	})
+
+func can_schedule(hero: String, inst_id: int, start_slot: int) -> bool:
+	var def_id := _inst_def(inst_id)
+	if def_id == "": return false
+	var dur := int(task_defs[def_id].get("duration_slots", 4))
+	# проверка занятости героя
+	for s in scheduled.get(hero, []):
+		var a := int(s["start"])
+		var b := a + int(s["duration"])
+		var c := start_slot
+		var d := c + dur
+		if c < b and d > a:
+			return false
+	return true
+
+func schedule_task(hero: String, inst_id: int, start_slot: int) -> bool:
+	if not can_schedule(hero, inst_id, start_slot): return false
+	var def_id := _inst_def(inst_id)
+	if def_id == "": return false
+	var dur := int(task_defs[def_id].get("duration_slots", 4))
+
+	# убрать из пула
+	for i in range(active_task_pool.size()):
+		if int(active_task_pool[i]["inst_id"]) == inst_id:
+			active_task_pool.remove_at(i)
+			break
+	var arr = scheduled.get(hero, [])
+	arr.append({ "inst_id":inst_id, "def_id":def_id, "start":start_slot, "duration":dur, "progress":0 })
+	scheduled[hero] = arr
+	emit_signal("task_pool_changed")
+	emit_signal("schedule_changed")
+	return true
+
+func unschedule_task(hero: String, inst_id: int) -> void:
+	var arr = scheduled.get(hero, [])
+	for i in range(arr.size()):
+		if int(arr[i]["inst_id"]) == inst_id:
+			# вернуть в пул
+			active_task_pool.append({ "inst_id":inst_id, "def_id":arr[i]["def_id"], "source":"unscheduled", "quest_id":"" })
+			arr.remove_at(i)
+			break
+	scheduled[hero] = arr
+	emit_signal("task_pool_changed")
+	emit_signal("schedule_changed")
+
+func _inst_def(inst_id: int) -> String:
+	for it in active_task_pool:
+		if int(it["inst_id"]) == inst_id: return String(it["def_id"])
+	for hero in scheduled.keys():
+		for s in scheduled[hero]:
+			if int(s["inst_id"]) == inst_id: return String(s["def_id"])
+	return ""
+
+func tick_timeline(slot: int) -> void:
+	timeline_clock["slot"] = slot
+	# старт / прогресс / завершение
+	for hero in party_names:
+		var arr = scheduled.get(hero, [])
+		for s in arr:
+			var st := int(s["start"])
+			var en := st + int(s["duration"])
+			if slot == st:
+				emit_signal("task_started", hero, int(s["inst_id"]))
+			# события по таймлайну
+			var def: Dictionary = task_defs.get(String(s["def_id"]), {})
+			for ev in Array(def.get("events", [])):
+				var at := st + int(ev.get("at_rel_slot", -999))
+				if slot == at:
+					emit_signal("task_event", hero, int(s["inst_id"]), ev)
+			# завершение
+			if slot == en:
+				_complete_task(hero, s)   # награды/штрафы
+				# снимаем расписание
+	# очистка завершённых
+	for hero in party_names:
+		var keep := []
+		for s in scheduled.get(hero, []):
+			if int(s["start"]) + int(s["duration"]) > slot:
+				keep.append(s)
+		scheduled[hero] = keep
+
+func _complete_task(hero: String, s: Dictionary) -> void:
+	var def: Dictionary = task_defs.get(String(s["def_id"]), {})
+	var outcome := _evaluate_outcome(hero, def) # успех/провал, модификаторы
+	_apply_costs_and_rewards(hero, def, outcome)
+	emit_signal("task_completed", hero, int(s["inst_id"]), outcome)
+
+func _apply_costs_and_rewards(hero: String, def: Dictionary, outcome: Dictionary) -> void:
+	# 1) Базовые расходы (сытость / стамина / мана / хп)
+	var bc: Dictionary = def.get("base_cost", {})
+
+	# сытость (лейер уже есть)
+	var take_sat := int(bc.get("satiety", 0))
+	if take_sat > 0:
+		var cur_sat := int(hero_satiety.get(hero, 50))
+		cur_sat -= take_sat
+		if cur_sat < 0:
+			cur_sat = 0
+		if cur_sat > 100:
+			cur_sat = 100
+		hero_satiety[hero] = cur_sat
+
+	# стамина
+	var take_sta := int(bc.get("stamina", 0))
+	if take_sta > 0:
+		var cur_sta := res_cur(hero, "stamina")
+		cur_sta -= take_sta
+		if cur_sta < 0:
+			cur_sta = 0
+		set_res_cur(hero, "stamina", cur_sta)
+
+	# мана
+	var take_mana := int(bc.get("mana", 0))
+	if take_mana > 0:
+		var cur_mana := res_cur(hero, "mana")
+		cur_mana -= take_mana
+		if cur_mana < 0:
+			cur_mana = 0
+		set_res_cur(hero, "mana", cur_mana)
+
+	# здоровье
+	var take_hp := int(bc.get("hp", 0))
+	if take_hp > 0:
+		var cur_hp := res_cur(hero, "hp")
+		cur_hp -= take_hp
+		if cur_hp < 0:
+			cur_hp = 0
+		set_res_cur(hero, "hp", cur_hp)
+
+	# 2) Награды (если успех — можно оставить как есть; если хочешь,
+	#    можешь смотреть на outcome["success"] и уменьшать выхлоп)
+	var rw: Dictionary = def.get("rewards", {})
+
+	var k := int(rw.get("krestli", 0))
+	if k > 0:
+		krestli += k
+
+	var eth := int(rw.get("etheria", 0))
+	if eth > 0:
+		add_etheria(eth)
+
+	var items: Array = rw.get("items", [])
+	for e in items:
+		if typeof(e) != TYPE_DICTIONARY:
+			continue
+		var iid := String(e.get("id",""))
+		var cnt := int(e.get("count", 0))
+		if iid != "" and cnt > 0:
+			add_to_base(iid, cnt)
+
+	var sups: Array = rw.get("supplies", [])
+	for e in sups:
+		if typeof(e) != TYPE_DICTIONARY:
+			continue
+		var sid := String(e.get("id",""))
+		var cnt := int(e.get("count", 0))
+		if sid != "" and cnt > 0:
+			supplies_add(sid, cnt)
+
+	var qxp: Dictionary = rw.get("qual_xp", {})
+	for qname in qxp.keys():
+		add_qual_xp(hero, String(qname), int(qxp[qname]))
+
+	# при желании: позитивные/негативные кондинции в зависимости от outcome
+	# if bool(outcome.get("success", true)) == false:
+	#     add_condition(hero, "fatigue", 0, 2)
+
+
+func _evaluate_outcome(hero: String, def: Dictionary) -> Dictionary:
+	var base := 60
+
+	# настроение
+	var mv := mood_value(hero)
+	var aff_mood: Dictionary = {}
+	var aff_root: Dictionary = def.get("affinity", {})
+	if aff_root.has("mood"):
+		aff_mood = aff_root["mood"]
+	var per10 := int(aff_mood.get("per10", 0))
+	base += per10 * int(mv / 10)
+
+	# квалификация
+	var req: Dictionary = {}
+	if def.has("require"):
+		var r: Dictionary = def["require"]
+		if r.has("qual"):
+			req = r["qual"]
+	for q in req.keys():
+		var need := int(req[q])
+		var have := get_qual_level(hero, String(q))
+		base += (have - need) * 8
+
+	# кондинции
+	var aff_conds: Dictionary = {}
+	if aff_root.has("conds"):
+		aff_conds = aff_root["conds"]
+	for c in aff_conds.keys():
+		if has_condition(hero, String(c)):
+			base += int(aff_conds[c])
+
+	# рандом и кламп
+	var roll := randi_range(-10, 10)
+	var chance := base + roll
+	if chance < 5:
+		chance = 5
+	if chance > 95:
+		chance = 95
+
+	var ok := chance >= 50
+	return {"success": ok, "chance": chance}
+
+
+
+func advance_phase_after_meal() -> void:
+	current_phase += 1
+	if current_phase >= phase_names.size():
+		current_phase = 0
+		day += 1
+	culling_spoiled_food()
+	_tick_conditions_and_phase_effects()
+	
+func apply_battle_start_augments(actor: Node, hero_name: String) -> void:
+	for eff_id in get_aug_start_effects(hero_name):
+		var proto := get_effect_proto(eff_id)
+		if not proto.is_empty():
+			if "add_effect" in actor: actor.add_effect(proto)
+			elif "apply_effect" in actor: actor.apply_effect(proto)
+	for eff_id in get_cond_start_effects(hero_name):
+		var proto := get_effect_proto(eff_id)
+		if not proto.is_empty():
+			if "add_effect" in actor: actor.add_effect(proto)
+			elif "apply_effect" in actor: actor.apply_effect(proto)
+
 func _fridge_add(meal_id: String, count: int, ttl_phases: int = CONTAINER_TTL_PHASES) -> int:
 	if meal_id == "" or count <= 0:
 		return 0
@@ -209,6 +516,19 @@ var food_prefs := {
 
 signal cooking_changed   # что-то в кулинарии поменялось (партия/холодильник/сытость)
 
+const CONDITIONS_JSON := "res://Data/conditions.json"
+const QUALS_JSON      := "res://Data/qualifications.json"
+
+var conditions_db: Dictionary = {}          # id -> прототип
+var hero_conditions: Dictionary = {}        # name -> Array[{id, expire_day?, expire_phase?}]
+signal conditions_changed
+
+var quals_db: Dictionary = {}               # id -> {name,icon?}
+var qual_rates: Dictionary = {}             # hero -> {qual:mult}
+var hero_quals: Dictionary = {}             # hero -> {qual:{lvl:int, xp:int}}
+
+var hero_mood: Dictionary = {}              # 0..100
+var hero_current: Dictionary = {}           # name -> {"hp":int,"mana":int,"stamina":int}
 
 # Собирает эффекты всех активных аугментов героя в агрегат
 func _aug_collect(hero_name: String) -> Dictionary:
@@ -316,39 +636,52 @@ func get_augmented_stats_preview(hero_name: String) -> Dictionary:
 
 # Помощник для старта боя: накинуть стартовые эффекты на узел бойца
 # Подставь внутрь вызов твоего метода добавления эффектов.
-func apply_battle_start_augments(actor: Node, hero_name: String) -> void:
-	for eff_id in get_aug_start_effects(hero_name):
-		var proto := get_effect_proto(eff_id) # из effects.json уже загружено
-		if not proto.is_empty():
-			# ↓↓↓ адаптируй под свой API бойца ↓↓↓
-			if "add_effect" in actor:
-				actor.add_effect(proto)
-			elif "apply_effect" in actor:
-				actor.apply_effect(proto)
-			# ↑↑↑ адаптируй под свой API бойца ↑↑↑
+
 
 
 # ------------- Quests -------------
 func _load_quests_from_json(path: String) -> void:
+	quests_all = {}
+	task_defs = {}
+	daily_pools = {}
+
 	if not FileAccess.file_exists(path):
 		push_warning("[Quests] file not found: " + path)
-		quests_all = {}
 		emit_signal("quests_changed")
 		return
+
 	var txt := FileAccess.get_file_as_string(path)
 	var parsed = JSON.parse_string(txt)
-	var root = (parsed if typeof(parsed) == TYPE_DICTIONARY else {})
+
+	var root: Dictionary = {}
+	if typeof(parsed) == TYPE_DICTIONARY:
+		root = parsed
+
+	# defs задач и ежедневные пулы (если есть в файле)
+	var td: Dictionary = root.get("task_defs", {})
+	if typeof(td) == TYPE_DICTIONARY:
+		task_defs = td.duplicate(true)
+
+	var dp: Dictionary = root.get("daily_pools", {})
+	if typeof(dp) == TYPE_DICTIONARY:
+		daily_pools = dp.duplicate(true)
+
+	# собственно квесты
 	var arr: Array = root.get("quests", [])
 	var map: Dictionary = {}
 	for q in arr:
-		if typeof(q) != TYPE_DICTIONARY: 
+		if typeof(q) != TYPE_DICTIONARY:
 			continue
 		var id := String(q.get("id",""))
-		if id == "": 
+		if id == "":
 			continue
 		map[id] = q
+
 	quests_all = map
+	task_defs   = root.get("task_defs", {}).duplicate(true)
+	daily_pools = root.get("daily_pools", {}).duplicate(true)
 	emit_signal("quests_changed")
+
 
 func get_sorted_quests() -> Array:
 	# только доступные, незавершённые сверху
@@ -377,9 +710,13 @@ func set_quest_completed(id: String, done: bool) -> void:
 	emit_signal("quests_changed")
 
 func get_quest_rewards(id: String) -> Dictionary:
-	if not quests_all.has(id): return {}
+	if not quests_all.has(id):
+		return {}
 	var q: Dictionary = quests_all[id]
-	return (q.get("rewards", {}) if q.has("rewards") else {})
+	if q.has("rewards"):
+		return q["rewards"]
+	return {}
+
 
 func award_rewards(rew: Dictionary) -> void:
 	if typeof(rew) != TYPE_DICTIONARY: 
@@ -464,6 +801,7 @@ func add_or_update_quest(id: String, name: String, desc: String, completed: bool
 			break
 	if not found:
 		active_quests.append({"id": id, "name": name, "desc": desc, "completed": completed})
+		spawn_quest_tasks(id)
 		emit_signal("quests_changed")
 
 
@@ -1162,13 +1500,6 @@ func culling_spoiled_food() -> void:
 	fridge = keep
 	emit_signal("cooking_changed")
 
-func advance_phase_after_meal() -> void:
-	# вызывай после нажатия «Накормить» в попапе
-	current_phase += 1
-	if current_phase >= phase_names.size():
-		current_phase = 0
-		day += 1
-	culling_spoiled_food()
 
 
 
@@ -1201,6 +1532,199 @@ func _ready() -> void:
 	_load_recipes()
 	_load_meals()
 	_init_satiety_defaults()
+	load_conditions_db()
+	load_quals_db()
+	_init_satiety_defaults()
+	_init_mood_defaults()
+	_init_current_resources()
+	
+func _init_mood_defaults() -> void:
+	for n in party_names:
+		if not hero_mood.has(n):
+			hero_mood[n] = 50
+
+func _init_current_resources() -> void:
+	for n in party_names:
+		var d: Dictionary = all_heroes.get(n, {})
+		var cur := {
+			"hp": int(d.get("max_hp", d.get("max_health", 100))),
+			"mana": int(d.get("max_mana", 0)),
+			"stamina": int(d.get("max_stamina", 0))
+		}
+		hero_current[n] = cur
+
+func load_conditions_db(path: String = CONDITIONS_JSON) -> void:
+	conditions_db = {}
+	if FileAccess.file_exists(path):
+		var s := FileAccess.get_file_as_string(path)
+		var j = JSON.parse_string(s)
+		if typeof(j) == TYPE_DICTIONARY:
+			conditions_db = j.get("conditions", {})
+	emit_signal("conditions_changed")
+
+func get_condition_def(id: String) -> Dictionary:
+	return conditions_db.get(id, {})
+
+func condition_title(id: String) -> String:
+	var d := get_condition_def(id)
+	return String(d.get("name", id))
+
+func add_condition(hero: String, id: String, days := 0, phases := 0) -> void:
+	if hero == "" or id == "" or not conditions_db.has(id):
+		return
+	var arr: Array = hero_conditions.get(hero, [])
+	var exp_day := day + int(days)
+	var exp_phase := current_phase + int(phases)
+	while exp_phase >= phase_names.size():
+		exp_phase -= phase_names.size()
+		exp_day += 1
+	arr.append({"id": id, "expire_day": exp_day, "expire_phase": exp_phase})
+	hero_conditions[hero] = arr
+	emit_signal("conditions_changed")
+
+func remove_condition(hero: String, id: String) -> void:
+	var arr: Array = hero_conditions.get(hero, [])
+	var out: Array = []
+	for e in arr:
+		if String(e.get("id","")) != id:
+			out.append(e)
+	hero_conditions[hero] = out
+	emit_signal("conditions_changed")
+
+func get_active_conditions(hero: String) -> Array:
+	return (hero_conditions.get(hero, []) as Array).duplicate(true)
+
+func cond_apply_to_stats(hero_name: String, base_stats: Dictionary) -> Dictionary:
+	var out := base_stats.duplicate(true)
+	for e in get_active_conditions(hero_name):
+		var id := String(e.get("id",""))
+		var def := get_condition_def(id)
+		if typeof(def) != TYPE_DICTIONARY: continue
+		var sm: Dictionary = def.get("stat_mod", {})
+		for k in sm.keys():
+			if k.ends_with("_pct"):
+				# процентные модификаторы, например max_health_pct
+				var stat_key = k.substr(0, k.length() - 4)
+				var mult := 1.0 + float(sm[k])
+				out[stat_key] = int(round(float(out.get(stat_key, 0)) * mult))
+			else:
+				out[k] = int(out.get(k, 0)) + int(sm[k])
+	return out
+
+func get_cond_start_effects(hero_name: String) -> Array:
+	var arr: Array = []
+	for e in get_active_conditions(hero_name):
+		var id := String(e.get("id",""))
+		var def := get_condition_def(id)
+		for fx in Array(def.get("on_battle_start", [])):
+			arr.append(String(fx))
+	return arr
+
+func _tick_conditions_and_phase_effects() -> void:
+	var changed := false
+	for hero in party_names:
+		var src: Array = hero_conditions.get(hero, [])
+		var keep: Array = []
+		for e in src:
+			var ed := int(e.get("expire_day", 99999))
+			var ep := int(e.get("expire_phase", 99999))
+			var expired := (day > ed) or (day == ed and current_phase > ep)
+			if not expired:
+				# on_phase эффекты
+				var def := get_condition_def(String(e.get("id","")))
+				var onp: Dictionary = def.get("on_phase", {})
+				if not onp.is_empty():
+					var cur: Dictionary = hero_current.get(hero, {})
+					if onp.has("mana") and String(onp["mana"]) == "zero":
+						cur["mana"] = 0
+						hero_current[hero] = cur
+						changed = true
+				keep.append(e)
+			else:
+				changed = true
+		hero_conditions[hero] = keep
+	if changed:
+		emit_signal("conditions_changed")
+
+
+func mood_value(hero: String) -> int:
+	return clampi(int(hero_mood.get(hero, 50)), 0, 100)
+
+func mood_title(v: int) -> String:
+	if v >= 80: return "Отличное"
+	if v >= 60: return "Хорошее"
+	if v >= 40: return "Нормальное"
+	if v >= 20: return "Плохое"
+	return "Ужасное"
+
+func res_max(hero: String, key: String) -> int:
+	var d: Dictionary = all_heroes.get(hero, {})
+	match key:
+		"hp":      return int(d.get("max_hp", d.get("max_health", 100)))
+		"mana":    return int(d.get("max_mana", 0))
+		"stamina": return int(d.get("max_stamina", 0))
+		_:         return 0
+
+func res_cur(hero: String, key: String) -> int:
+	return int((hero_current.get(hero, {}) as Dictionary).get(key, res_max(hero, key)))
+
+func set_res_cur(hero: String, key: String, v: int) -> void:
+	var cur: Dictionary = hero_current.get(hero, {})
+	cur[key] = clampi(v, 0, res_max(hero, key))
+	hero_current[hero] = cur
+
+func load_quals_db(path: String = QUALS_JSON) -> void:
+	quals_db = {}
+	qual_rates = {}
+	if FileAccess.file_exists(path):
+		var s := FileAccess.get_file_as_string(path)
+		var j = JSON.parse_string(s)
+		if typeof(j) == TYPE_DICTIONARY:
+			quals_db = j.get("quals", {})
+			qual_rates = j.get("rates", {})
+	# инициализируем хранилище прогресса
+	for n in party_names:
+		if not hero_quals.has(n):
+			hero_quals[n] = {}
+
+func qual_title(id: String) -> String:
+	return String(quals_db.get(id, {}).get("name", id))
+
+func qual_rate(hero: String, q: String) -> float:
+	var r: Dictionary = qual_rates.get(hero, {})
+	return float(r.get(q, 1.0))
+
+func qual_xp_needed(lvl: int) -> int:
+	lvl = max(1, lvl)
+	return 100 * int(pow(2.0, float(lvl - 1)))
+
+func add_qual_xp(hero: String, q: String, raw_xp: int) -> void:
+	if not quals_db.has(q): return
+	var store: Dictionary = hero_quals.get(hero, {})
+	var cur: Dictionary = store.get(q, {"lvl": 0, "xp": 0})
+	var gain := int(round(float(raw_xp) * qual_rate(hero, q)))
+	cur["xp"] = int(cur.get("xp", 0)) + gain
+	# апаем уровни
+	while true:
+		var need := qual_xp_needed(int(cur.get("lvl", 0)) + 1)
+		if int(cur["xp"]) >= need:
+			cur["xp"] -= need
+			cur["lvl"] = int(cur.get("lvl", 0)) + 1
+		else:
+			break
+	store[q] = cur
+	hero_quals[hero] = store
+
+func get_hero_quals_nonzero(hero: String) -> Array:
+	var out: Array = []
+	var store: Dictionary = hero_quals.get(hero, {})
+	for q in store.keys():
+		var st: Dictionary = store[q]
+		var lvl := int(st.get("lvl", 0))
+		if lvl > 0:
+			out.append({"id": String(q), "title": qual_title(String(q)), "lvl": lvl, "xp": int(st.get("xp",0)), "need": qual_xp_needed(lvl+1)})
+	out.sort_custom(func(a,b): return String(a["title"]) < String(b["title"]))
+	return out
 
 # ====== HERO PACKS ============================================================
 func _build_hero_bags_from_pack() -> void:

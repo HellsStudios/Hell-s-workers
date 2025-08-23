@@ -1,109 +1,91 @@
 extends Panel
-# Константы шкалы времени:
-const TOTAL_SLOTS: int = 48          # количество слотов (с 08:00 до 20:00, 15-минутные интервалы)
-const SLOT_WIDTH: float = 25.0       # ширина одного 15-минутного слота в пикселях (1200px / 48 = 25px)
 
-func _can_drop_data(position: Vector2, data: Variant) -> bool:
-	
-	# Вызывается во время перетаскивания, когда курсор находится над этой строкой.
-	# Мы должны проверить, можно ли бросить сюда тот объект (data), который тащат:contentReference[oaicite:8]{index=8}.
-	# Если вернем true, Godot даст позитивный сигнал (например, может поменять курсор), 
-	# а отпуская, вызовет _drop_data. Если false – этот узел не примет данные.
-	# Начнем с проверки типа данных:
+const TOTAL_SLOTS := 48
+const SLOT_WIDTH  := 25.0
+
+static func _has_prop(o: Object, prop: String) -> bool:
+	if o == null: return false
+	for p in o.get_property_list():
+		if String(p.get("name","")) == prop:
+			return true
+	return false
+
+func _slot_from_x(x: float) -> int:
+	var s := int(floor(x / SLOT_WIDTH))
+	if s < 0: s = 0
+	return s
+
+func _can_drop_data(pos: Vector2, data: Variant) -> bool:
 	if typeof(data) != TYPE_DICTIONARY:
 		return false
-	if not data.has("duration") or not data.has("source"):
-		return false  # Ожидаем, что data – словарь с ключами "duration", "source" и др.
-	# Извлечем нужную информацию:
-	var task_duration: int = data["duration"]
-	var source_type: String = data["source"]
-	# Рассчитаем предполагаемый стартовый слот, куда хотят бросить задачу.
-	# position.x – это координата в пикселях внутри этой Panel, где находится курсор в момент вызова.
-	# Мы привяжем ее к сетке 15 мин. Используем округление до ближайшего слота:
-	var slot_index: int = int(floor(position.x / SLOT_WIDTH))
-	print("can_drop -> ", slot_index, ": ", true)  # или false
-	# Ограничим индекс в диапазоне допустимых (0 .. TOTAL_SLOTS - duration):
-	if slot_index < 0:
-		slot_index = 0
-	if slot_index + task_duration > TOTAL_SLOTS:
-		# Если даже начальный слот таков, что задача не помещается в конец дня, откажем.
+	if not data.has("duration"):
 		return false
-	# Проверим наложение на другие задачи в этой строке:
-	# Пройдёмся по всем дочерним узлам этой TimelineRow.
-	for child in get_children():
-		if child == data["node"]:
-			continue              # пропускаем саму перетаскиваемую задачу
-		if child is ColorRect and child.schedule_start_slot >= 0:
-			# Предполагаем, что все дочерние ColorRect – это задачи (TaskCard), 
-			# т.к. других детей у TimelineRow нет (мы не добавляли спец. узлы).
-			var other_task: ColorRect = child
-			# Получим начало и конец занятого диапазона другой задачи:
-			# Мы сохраняли start_slot в свойстве schedule_start_slot у TaskCard.
-			# Потому что, когда добавляем задачу на таймлайн, мы это поле заполним.
-			if other_task.has_method("get") and other_task.get("schedule_start_slot") != null:
-				var other_start: int = other_task.schedule_start_slot
-				var other_duration: int = other_task.duration_slots
-				var other_end: int = other_start + other_duration
-				var new_start: int = slot_index
-				var new_end: int = slot_index + task_duration
-				# Условие пересечения интервалов [new_start, new_end) и [other_start, other_end):
-				if new_start < other_end and new_end > other_start:
-					return false  # временной конфликт: новая задача пересекается с существующей
-			# (Если по какой-то причине у child нет этих свойств, можно иначе вычислить:
-			# например, по позиции и ширине child рассчитать его слоты.
-			# Но благодаря тому, что мы проставим schedule_start_slot, мы пользуемся им.)
-	# Если источник данных – та же самая строка и та же задача, можно предусмотреть.
-	# Но в нашем случае, _can_drop_data не вызывается для источника, а только для целей.
-	# Итого, если прошли все проверки – можно принять drop.
+
+	var dur := int(data["duration"])
+	var slot := _slot_from_x(pos.x)
+	if slot + dur > TOTAL_SLOTS:
+		return false
+
+	# проверка пересечений с уже лежащими карточками
+	for c in get_children():
+		if c == data.get("node", null):
+			continue
+		if not (c is ColorRect):
+			continue
+
+		var st := -1
+		var d2 := 0
+		if _has_prop(c, "schedule_start_slot"):
+			st = int(c.get("schedule_start_slot"))
+		if _has_prop(c, "duration_slots"):
+			d2 = int(c.get("duration_slots"))
+
+		if st >= 0 and d2 > 0:
+			var en := st + d2
+			var new_en := slot + dur
+			if slot < en and new_en > st:
+				return false
 	return true
 
-func _drop_data(position: Vector2, data: Variant) -> void:
-	# Вызывается, когда пользователь отпустил drag и _can_drop_data вернул true, т.е. drop принят:contentReference[oaicite:12]{index=12}.
-	# Здесь нужно "приземлить" задачу на эту линию.
-	if typeof(data) != TYPE_DICTIONARY or not data.has("node") or not data.has("duration"):
-		return  # безопасность: если что-то не так с данными, ничего не делаем
-	var task_node = data["node"]       # ссылка на перетаскиваемый узел TaskCard (оригинал)
-	var task_duration: int = data["duration"]
-	var source_type: String = data.get("source", "")  # если ключа может не быть, default ""
-	# Рассчитаем стартовый слот аналогично can_drop:
-	var slot_index: int = int(floor(position.x / SLOT_WIDTH))
-	if slot_index < 0:
-		slot_index = 0
-	if slot_index + task_duration > TOTAL_SLOTS:
-		slot_index = TOTAL_SLOTS - task_duration  # на всякий случай подвинем, хотя can_drop уже бы отсек
-	# Вычислим точную координату X для этого слота (привязка к сетке):
-	var snapped_x: float = slot_index * SLOT_WIDTH
-	var row_h   := size.y                      # высота строки-Panel (обычно 40 px)
-	var card_h  = task_node.size.y            # высота карточки (30 px)
-	var centred_y = (row_h - card_h) / 2.0   # по центру
-	# Теперь в зависимости от источника:
+func _drop_data(pos: Vector2, data: Variant) -> void:
+	if typeof(data) != TYPE_DICTIONARY:
+		return
+	if not data.has("node"):
+		return
 
-	if source_type == "pool":
-		# 1. отцепляем от списка задач (TaskList)
-		var old_parent = task_node.get_parent()
-		if old_parent:
-			old_parent.remove_child(task_node)
+	var card: Control = data["node"]
+	var dur  := int(data.get("duration", 1))
+	var inst_id := int(data.get("inst_id", 0))
+	var from_hero := String(data.get("hero",""))
 
-		# 2. добавляем в текущую TimelineRow
-		add_child(task_node)
+	# герой-владелец строки — мы записали его контроллером в свойство "hero_name"
+	var hero := ""
+	if has_method("get"):
+		var v = get("hero_name")
+		if typeof(v) == TYPE_STRING:
+			hero = String(v)
 
-		# далее позиция, ширина и т.д.
-		task_node.position = Vector2(snapped_x, centred_y)
-		var new_width := task_duration * SLOT_WIDTH
-		task_node.set_size(Vector2(new_width, task_node.size.y))
-		task_node.size_flags_horizontal = Control.SIZE_FILL
-		task_node.schedule_start_slot = slot_index
-		task_node.visible = true
+	var slot := _slot_from_x(pos.x)
+	if not _can_drop_data(pos, data):
+		return
 
-	elif source_type == "timeline":
-		var old_parent = task_node.get_parent()
-		if old_parent != self:
-			old_parent.remove_child(task_node)
-			add_child(task_node)
+	# если перетащили с другой строки — отписать старое расписание
+	if inst_id > 0 and from_hero != "":
+		GameManager.unschedule_task(from_hero, inst_id)
 
-		# позиция и размер — как раньше
-		task_node.position = Vector2(snapped_x, centred_y)
-		task_node.set_size(Vector2(task_duration * SLOT_WIDTH, task_node.size.y))
-		task_node.schedule_start_slot = slot_index
-		task_node.visible = true
-	# Готово: задача добавлена на линию.
+	# переместить ноду в текущую строку
+	if card.get_parent():
+		card.get_parent().remove_child(card)
+	add_child(card)
+
+	# позиция/размер
+	var y := (size.y - card.size.y) * 0.5
+	card.position = Vector2(float(slot) * SLOT_WIDTH, y)
+	card.set("schedule_start_slot", slot)
+	card.set("duration_slots", dur)
+	card.size_flags_horizontal = Control.SIZE_FILL
+	card.visible = true
+
+	# зарегистрировать расписание в GM
+	if inst_id > 0 and hero != "":
+		GameManager.schedule_task(hero, inst_id, slot)
