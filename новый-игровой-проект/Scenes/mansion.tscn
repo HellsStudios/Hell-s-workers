@@ -78,7 +78,6 @@ range_z_max = 0
 [node name="Room1PopupPanel" type="PopupPanel" parent="."]
 unique_name_in_owner = true
 size = Vector2i(1061, 405)
-visible = true
 script = ExtResource("4_jd5lx")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="Room1PopupPanel"]
@@ -342,6 +341,7 @@ layout_mode = 2
 [node name="ManagementMenu" type="PopupPanel" parent="UI"]
 initial_position = 4
 size = Vector2i(900, 560)
+visible = true
 script = ExtResource("3_e6st1")
 
 [node name="MarginContainer" type="MarginContainer" parent="UI/ManagementMenu"]
@@ -375,7 +375,7 @@ text = "Закрыть"
 unique_name_in_owner = true
 layout_mode = 2
 tab_alignment = 1
-current_tab = 5
+current_tab = 1
 
 [node name="InventoryTab" type="Control" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs"]
 unique_name_in_owner = true
@@ -470,7 +470,6 @@ fit_content = true
 
 [node name="EquipmentTab" type="Control" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs"]
 unique_name_in_owner = true
-visible = false
 layout_mode = 2
 metadata/_tab_index = 1
 
@@ -486,6 +485,7 @@ grow_horizontal = 2
 
 [node name="HBoxContainer" type="HBoxContainer" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer"]
 layout_mode = 2
+alignment = 1
 
 [node name="Label" type="Label" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer"]
 layout_mode = 2
@@ -496,6 +496,7 @@ unique_name_in_owner = true
 layout_mode = 2
 
 [node name="Label" type="Label" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer"]
+visible = false
 layout_mode = 2
 text = "\"Сумка героя (для боёв)\""
 
@@ -503,13 +504,79 @@ text = "\"Сумка героя (для боёв)\""
 unique_name_in_owner = true
 layout_mode = 2
 
+[node name="HBoxContainer3" type="HBoxContainer" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3"]
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+alignment = 1
+
+[node name="HPBar" type="ProgressBar" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="MPBar" type="ProgressBar" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="StaminaBar" type="ProgressBar" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="SatietyLabel" type="Label" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="MoodLabel" type="Label" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="VBoxContainer2" type="VBoxContainer" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+
+[node name="CondList" type="ItemList" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3/VBoxContainer2"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 150)
+layout_mode = 2
+
+[node name="VBoxContainer3" type="VBoxContainer" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+
+[node name="CondDesc" type="RichTextLabel" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3/VBoxContainer3"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 150)
+layout_mode = 2
+
+[node name="VBoxContainer4" type="VBoxContainer" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+
+[node name="QualList" type="ItemList" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3/VBoxContainer4"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 150)
+layout_mode = 2
+
+[node name="VBoxContainer5" type="VBoxContainer" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+
+[node name="QualInfo" type="Label" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer3/VBoxContainer5"]
+unique_name_in_owner = true
+layout_mode = 2
+
 [node name="EqHeroList" type="ItemList" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer"]
 unique_name_in_owner = true
+visible = false
 custom_minimum_size = Vector2(220, 100)
 layout_mode = 2
 
 [node name="HBoxContainer2" type="HBoxContainer" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer"]
 layout_mode = 2
+alignment = 1
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/EquipmentTab/VBoxContainer/HBoxContainer2"]
 layout_mode = 2
@@ -704,6 +771,7 @@ layout_mode = 2
 
 [node name="AugmentsTab" type="Control" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs"]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 metadata/_tab_index = 5
 

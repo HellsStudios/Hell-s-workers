@@ -60,6 +60,7 @@ func _on_archive_entry_selected(i: int) -> void:
 					archive_image.texture = tex
 
 
+
 func _dump_refs() -> void:
 	var refs := {
 		"tabs": tabs,
@@ -202,6 +203,63 @@ func _dump_hero(hero: String, prefix := "HERO") -> void:
 @onready var aug_tree: Tree           = %AugTree
 @onready var aug_desc: RichTextLabel  = %AugDesc
 
+# --- Equipment / Stats UI ---
+@onready var hp_bar: ProgressBar      = %HPBar
+@onready var mp_bar: ProgressBar      = %MPBar
+@onready var st_bar: ProgressBar      = %StaminaBar
+@onready var sat_label: Label         = %SatietyLabel
+@onready var mood_label: Label        = %MoodLabel
+
+@onready var cond_list: ItemList      = %CondList
+@onready var cond_desc: RichTextLabel = %CondDesc
+
+@onready var qual_list: ItemList      = %QualList
+@onready var qual_info: Label         = %QualInfo
+
+func _refresh_eq_stats_ui(hero: String) -> void:
+	# бары
+	if hp_bar:
+		hp_bar.max_value = GameManager.res_max(hero, "hp")
+		hp_bar.value = GameManager.res_cur(hero, "hp")
+		hp_bar.tooltip_text = "%d / %d" % [int(hp_bar.value), int(hp_bar.max_value)]
+	if mp_bar:
+		mp_bar.max_value = GameManager.res_max(hero, "mana")
+		mp_bar.value = GameManager.res_cur(hero, "mana")
+		mp_bar.tooltip_text = "%d / %d" % [int(mp_bar.value), int(mp_bar.max_value)]
+	if st_bar:
+		st_bar.max_value = GameManager.res_max(hero, "stamina")
+		st_bar.value = GameManager.res_cur(hero, "stamina")
+		st_bar.tooltip_text = "%d / %d" % [int(st_bar.value), int(st_bar.max_value)]
+
+	# сытость и настроение
+	if sat_label:
+		var sat := clampi(int(GameManager.hero_satiety.get(hero, 50)), 0, 100)
+		sat_label.text = "Сытость: %d/100" % sat
+	if mood_label:
+		var mv := GameManager.mood_value(hero)
+		mood_label.text = "Настроение: %s (%d)" % [GameManager.mood_title(mv), mv]
+
+	# кондинции
+	if cond_list:
+		cond_list.clear()
+		for e in GameManager.get_active_conditions(hero):
+			var id := String(e.get("id",""))
+			var idx := cond_list.add_item(GameManager.condition_title(id))
+			cond_list.set_item_metadata(idx, id)
+	if cond_desc:
+		cond_desc.bbcode_enabled = true
+		cond_desc.text = ""
+
+	# квалификации
+	if qual_list:
+		qual_list.clear()
+		for q in GameManager.get_hero_quals_nonzero(hero):
+			var line := "%s  (ур. %d)" % [String(q["title"]), int(q["lvl"])]
+			var idx := qual_list.add_item(line)
+			qual_list.set_item_metadata(idx, q)
+	if qual_info:
+		qual_info.text = ""
+
 
 # ================== lifecycle ==================
 func _ready() -> void:
@@ -222,6 +280,9 @@ func _ready() -> void:
 
 	if not heroes_drop.item_selected.is_connected(_on_hero_changed_inventory):
 		heroes_drop.item_selected.connect(_on_hero_changed_inventory); _dbg("connect heroes_drop.item_selected")
+	# >>> Новое: переключение героя на вкладке Equipment
+	if eq_drop and not eq_drop.item_selected.is_connected(_on_eq_hero_changed):
+		eq_drop.item_selected.connect(_on_eq_hero_changed); _dbg("connect eq_drop.item_selected")
 
 	if not to_hero_btn.pressed.is_connected(_on_move_to_hero):
 		to_hero_btn.pressed.connect(_on_move_to_hero); _dbg("connect to_hero_btn.pressed")
@@ -235,13 +296,13 @@ func _ready() -> void:
 	if not hero_list.item_selected.is_connected(_on_hero_item_selected):
 		hero_list.item_selected.connect(_on_hero_item_selected); _dbg("connect hero_list.item_selected")
 
-# сигналы от GM
+	# сигналы от GM
 	if GameManager.has_signal("quests_changed") and not GameManager.quests_changed.is_connected(_refresh_quests):
 		GameManager.quests_changed.connect(_refresh_quests)
 	if GameManager.has_signal("archive_changed") and not GameManager.archive_changed.is_connected(_refresh_archive):
 		GameManager.archive_changed.connect(_refresh_archive)
-		
-		# Включаем BBCode на тексте
+
+	# Включаем BBCode на тексте
 	if quest_info: quest_info.bbcode_enabled = true
 	if archive_text: archive_text.bbcode_enabled = true
 	if item_info:     item_info.bbcode_enabled = true
@@ -252,6 +313,32 @@ func _ready() -> void:
 	if archive_entries and not archive_entries.item_selected.is_connected(_on_archive_entry_selected):
 		archive_entries.item_selected.connect(_on_archive_entry_selected)
 
+	if cond_list and not cond_list.item_selected.is_connected(func(i:int):
+		var id := String(cond_list.get_item_metadata(i))
+		var d := GameManager.get_condition_def(id)
+		if cond_desc:
+			cond_desc.text = "[b]%s[/b]\n\n%s" % [String(d.get("name", id)), String(d.get("desc",""))]
+	): cond_list.item_selected.connect(func(i:int):
+		var id := String(cond_list.get_item_metadata(i))
+		var d := GameManager.get_condition_def(id)
+		if cond_desc:
+			cond_desc.text = "[b]%s[/b]\n\n%s" % [String(d.get("name", id)), String(d.get("desc",""))]
+	)
+
+	if qual_list and not qual_list.item_selected.is_connected(func(i:int):
+		var q: Dictionary = qual_list.get_item_metadata(i)
+		if qual_info:
+			qual_info.text = "Опыт: %d / %d" % [int(q.get("xp",0)), int(q.get("need",0))]
+	): qual_list.item_selected.connect(func(i:int):
+		var q: Dictionary = qual_list.get_item_metadata(i)
+		if qual_info:
+			qual_info.text = "Опыт: %d / %d" % [int(q.get("xp",0)), int(q.get("need",0))]
+	)
+
+	# Демо-добавления (оставляю как было)
+	GameManager.add_condition("Dante", "dante_low_batt", 0, 3)   # на 3 фазы
+	GameManager.add_condition("Berit", "injury", 1, 0)           # до конца дня
+	GameManager.add_qual_xp("Sally", "cooking", 220)             # ап уровня готовки
 
 	# первичная отрисовка
 	_refresh_quests()
@@ -263,7 +350,7 @@ func _ready() -> void:
 		base_list.item_activated.connect(func(_i): _on_move_to_hero())
 	if not hero_list.item_activated.is_connected(func(_i): _on_move_to_base()):
 		hero_list.item_activated.connect(func(_i): _on_move_to_base())
-	
+
 	# --- skills wires ---
 	if skills_all:
 		skills_all.item_selected.connect(_on_skill_selected_all)
@@ -273,7 +360,7 @@ func _ready() -> void:
 		skills_eq.item_activated.connect(func(_i): _unequip_selected())
 	if equip_btn: equip_btn.pressed.connect(_equip_selected)
 	if unequip_btn: unequip_btn.pressed.connect(_unequip_selected)
-	
+
 	# Supplies signals
 	if GameManager.has_signal("supplies_changed") and not GameManager.supplies_changed.is_connected(_refresh_supplies):
 		GameManager.supplies_changed.connect(_refresh_supplies)
@@ -285,7 +372,7 @@ func _ready() -> void:
 
 	# первичный вывод
 	_refresh_supplies()
-	
+
 	# заголовки дерева
 	if aug_tree:
 		aug_tree.hide_root = true
@@ -319,8 +406,27 @@ func _ready() -> void:
 	and not GameManager.augments_changed.is_connected(_refresh_aug_tab):
 		GameManager.augments_changed.connect(_refresh_aug_tab, Object.CONNECT_DEFERRED)
 
+	# >>> Новое: чтобы бары/кондинции/квалификации обновлялись автоматически
+	if GameManager.has_signal("conditions_changed") \
+	and not GameManager.conditions_changed.is_connected(_refresh_eq_tab):
+		GameManager.conditions_changed.connect(_refresh_eq_tab, Object.CONNECT_DEFERRED)
+
+	if GameManager.has_signal("augments_changed") \
+	and not GameManager.augments_changed.is_connected(_refresh_eq_tab):
+		GameManager.augments_changed.connect(_refresh_eq_tab, Object.CONNECT_DEFERRED)
+
+	if GameManager.has_signal("cooking_changed") \
+	and not GameManager.cooking_changed.is_connected(_refresh_eq_tab):
+		GameManager.cooking_changed.connect(_refresh_eq_tab, Object.CONNECT_DEFERRED)
+
+	# >>> Новое: если пользователь прыгает по табам — освежаем Equipment
+	if tabs and not tabs.tab_changed.is_connected(func(_i:int): _refresh_eq_tab()):
+		tabs.tab_changed.connect(func(_i:int): _refresh_eq_tab())
+
 	# первичная отрисовка
 	_refresh_aug_tab()
+	_refresh_eq_tab()  # ещё раз после всех подключений и тест-добавлений
+
 
 
 
@@ -598,9 +704,12 @@ func _unequip_selected() -> void:
 # ================== equipment tab ==================
 func _refresh_eq_tab() -> void:
 	var h := _cur_hero_name(eq_drop)
-	_refresh_hero_stats(eq_stats, h)
-	_refresh_hero_bag(eq_drop, eq_list)
+	_refresh_eq_stats_ui(h)
 	_refresh_skill_lists(h)
+	# список предметов для EquipmentTab больше не показываем
+	if eq_list:
+		eq_list.visible = false
+
 
 func _on_eq_hero_changed(_idx: int) -> void:
 	_refresh_eq_tab()
