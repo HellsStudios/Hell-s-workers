@@ -15,7 +15,7 @@ var supplies_db: Dictionary = {}        # id -> def (из supplies.json)
 var supplies_inventory: Dictionary = {} # id -> count (на базе)
 const SUPPLIES_JSON := "res://Data/supplies.json"
 const SUPPLIES_ICON_DIR := "res://Assets/supplies/"  # необязательно
-
+var next_inst_id: int = 1
 signal supplies_changed
 
 var enemies_db: Dictionary = {}  # id -> деф
@@ -90,7 +90,7 @@ var task_defs: Dictionary = {}        # id -> деф задачи (из quests.j
 var daily_pools: Dictionary = {}      # name -> Array[{id,chance,min,max}]
 var active_task_pool: Array = []      # [{inst_id, def_id, source:"quest"/"daily"/..., quest_id?}]
 var scheduled: Dictionary = {}        # hero -> Array[{inst_id, def_id, start:int, duration:int, progress:int}]
-var _task_inst_seq: int = 1
+
 var timeline_clock := { "slot": 0, "running": false, "slot_sec": 0.7 }
 
 signal task_pool_changed
@@ -99,19 +99,201 @@ signal task_event(hero: String, inst_id: int, event_def: Dictionary)
 signal task_started(hero: String, inst_id: int)
 signal task_completed(hero: String, inst_id: int, outcome: Dictionary)
 
+signal task_finished(hero: String, inst_id: int, success: bool, rewards: Dictionary)
+
+var day_summary := {"krestli":0, "etheria":0, "items":[], "supplies":[]}
+
+func _recalc_next_inst_id() -> void:
+	var mx := 0
+	# из пула
+	for inst in active_task_pool:
+		if typeof(inst) == TYPE_DICTIONARY and inst.has("inst_id"):
+			mx = maxi(mx, int(inst["inst_id"]))
+	# из расписания
+	for hero in scheduled.keys():
+		for rec in scheduled.get(hero, []):
+			if typeof(rec) == TYPE_DICTIONARY and rec.has("inst_id"):
+				mx = maxi(mx, int(rec["inst_id"]))
+	next_inst_id = mx + 1
+
+func _alloc_inst_id() -> int:
+	var id := next_inst_id
+	next_inst_id += 1
+	return id
+
+func finish_task(hero: String, inst_id: int, success: bool) -> Dictionary:
+	# находим запись
+	var arr: Array = scheduled.get(hero, [])
+	var rec: Dictionary = {}
+	for r in arr:
+		if int(r.get("inst_id", 0)) == inst_id:
+			rec = r
+			break
+	if rec.is_empty():
+		return {}
+
+	var def_id := String(rec.get("def_id",""))
+	var def: Dictionary = task_defs.get(def_id, {})
+	var rewards: Dictionary = {}
+	if success:
+		rewards = def.get("rewards", {})
+
+	# применяем награды как сможем (дальше твой внутренний учёт)
+	day_summary.krestli += int(rewards.get("krestli",0))
+	day_summary.etheria += int(rewards.get("etheria",0))
+	if rewards.has("items"):
+		day_summary.items += rewards.items
+	if rewards.has("supplies"):
+		day_summary.supplies += rewards.supplies
+
+	# снимаем с расписания
+	unschedule_task(hero, inst_id)
+	emit_signal("schedule_changed")
+	emit_signal("task_finished", hero, inst_id, success, rewards)
+
+	# чейнинг: followup
+	var next_def := String(def.get("next_def",""))
+	if next_def != "":
+		spawn_task_instance(next_def, {"kind":"quest"}) # см. ниже про цвет
+		emit_signal("task_pool_changed")
+
+	return rewards
+
+var spawned_quests_today := {}  # { quest_id: true/false }
+
+func reset_day_flags() -> void:
+	spawned_quests_today.clear()
+
+func get_day_summary() -> Dictionary:
+	return day_summary
+
+func reset_day_summary() -> void:
+	day_summary = {"krestli":0, "etheria":0, "items":[], "supplies":[]}
+
+# Упрощённый хелпер, если нет — сделай тонкую обёртку над твоим спавном
+func spawn_task_instance(def_id: String, extra: Dictionary = {}) -> void:
+	var inst := {
+		"def_id": def_id,
+		"inst_id": _alloc_inst_id(),
+		"kind": String(extra.get("kind","daily")),
+		"quest_id": String(extra.get("quest_id",""))
+	}
+	active_task_pool.append(inst)
+	emit_signal("task_pool_changed")
+
+# GameManager.gd
+func _find_quest(quest_id: String) -> Dictionary:
+	# основное хранилище
+	if typeof(quests_all) == TYPE_DICTIONARY and quests_all.has(quest_id):
+		return (quests_all[quest_id] as Dictionary).duplicate(true)
+
+	# запасной вариант: вдруг где-то остался Array "quests"
+	var arr = get("quests")
+	if typeof(arr) == TYPE_ARRAY:
+		for it in arr:
+			if typeof(it) == TYPE_DICTIONARY and String(it.get("id","")) == quest_id:
+				return (it as Dictionary).duplicate(true)
+	return {}
+
+func _resolve_event_option(hero: String, inst_id: int, ev_def: Dictionary, opt: Dictionary) -> void:
+	var ok := true
+
+	# проверка квалификации
+	var need: Dictionary = opt.get("qual_need", {})
+	if typeof(need) == TYPE_DICTIONARY:
+		for q in need.keys():
+			if get_qual_level(hero, String(q)) < int(need[q]):
+				ok = false
+				break
+
+	# риск (чем выше risk, тем больше шанс провала)
+	var risk := int(opt.get("risk", 0))
+	if risk > 0 and randi_range(1, 100) <= risk:
+		ok = false
+
+	var pack: Dictionary = {}
+	if ok:
+		pack = opt.get("on_success", {})
+	else:
+		pack = opt.get("on_fail", {})
+
+
+	# применяем выхлоп (деньги/эфирия/опыт/итемы/припасы/кондинции)
+	if pack.has("krestli"):  krestli += int(pack["krestli"])
+	if pack.has("etheria"):  add_etheria(int(pack["etheria"]))
+
+	if pack.has("qual_xp"):
+		var qxp: Dictionary = pack["qual_xp"]
+		for q in qxp.keys():
+			add_qual_xp(hero, String(q), int(qxp[q]))
+
+	if pack.has("items"):
+		for e in (pack["items"] as Array):
+			if typeof(e) == TYPE_DICTIONARY:
+				add_to_base(String(e.get("id","")), int(e.get("count", 0)))
+
+	if pack.has("supplies"):
+		for e in (pack["supplies"] as Array):
+			if typeof(e) == TYPE_DICTIONARY:
+				supplies_add(String(e.get("id","")), int(e.get("count", 0)))
+
+	if pack.has("cond_add"):
+		for cid in (pack["cond_add"] as Array):
+			add_condition(hero, String(cid), 0, 2)
+
+	# опционально тост
+	var txt := "Провал"
+	if ok:
+		txt = "Успех"
+	Toasts.warn("Событие: %s — %s." % [String(ev_def.get("id","")), txt])
+
+
 func spawn_quest_tasks(quest_id: String) -> void:
-	var q: Dictionary = quests_all.get(quest_id, {})
-	var arr: Array = q.get("tasks", [])
-	for t in arr:
+	var q := _find_quest(quest_id)
+	if q.is_empty():
+		print_debug("[QUEST] not found: ", quest_id)
+		return
+
+	if spawned_quests_today.get(quest_id, false):
+		return
+	spawned_quests_today[quest_id] = true
+
+	for t in q.get("tasks", []):
 		if typeof(t) != TYPE_DICTIONARY:
 			continue
-		var def_id := String(t.get("def",""))
+		var def_id := String(t.get("def", ""))
 		var count := int(t.get("count", 1))
-		if def_id == "" or count <= 0:
-			continue
-		for _i in count:
-			_add_task_instance(def_id, "quest", quest_id)
-	emit_signal("task_pool_changed")
+		var unique := bool(t.get("unique", true))
+
+		# не дублируем уже существующий в пуле квестовый инстанс того же def_id
+		if unique:
+			var already := false
+			for inst in active_task_pool:
+				if typeof(inst) == TYPE_DICTIONARY \
+				and String(inst.get("def_id","")) == def_id \
+				and String(inst.get("kind","")) == "quest":
+					already = true; break
+			if already:
+				continue
+
+		# оверрайды из tasks[]:
+		var override := {}
+		if t.has("title"):  override["title"]  = String(t["title"])
+		if t.has("color"):  override["color"]  = String(t["color"])
+		if t.has("events"): override["events_override"] = t["events"]
+
+		# если title не задан — используем имя квеста, чтобы отличался от daily
+		if not override.has("title"):
+			override["title"] = String(q.get("name", def_id))
+		# если цвет не задан — сделаем квестовую карточку синей
+		if not override.has("color"):
+			override["color"] = "#3b82f6"
+
+		for i in range(count):
+			_add_task_instance(def_id, "quest", quest_id, override)
+
+	if has_signal("task_pool_changed"):
+		task_pool_changed.emit()
 
 
 func spawn_daily_tasks(pool_name: String = "default") -> void:
@@ -131,10 +313,13 @@ func spawn_daily_tasks(pool_name: String = "default") -> void:
 		while n < mx and randf() < chance:
 			n += 1
 		for _i in n:
-			_add_task_instance(def_id, "daily", "")
+			_add_task_instance(def_id, "daily", "", {})  # ← ВАЖНО: kind="daily"
 			spawned += 1
+
 	if spawned > 0:
 		emit_signal("task_pool_changed")
+
+
 
 func has_condition(hero: String, id: String) -> bool:
 	var arr: Array = hero_conditions.get(hero, [])
@@ -151,15 +336,20 @@ func get_qual_level(hero: String, q: String) -> int:
 	return 0
 
 
-func _add_task_instance(def_id: String, source: String, quest_id: String) -> void:
-	if not task_defs.has(def_id): return
-	var inst_id := _task_inst_seq; _task_inst_seq += 1
-	active_task_pool.append({
-		"inst_id": inst_id,
+func _add_task_instance(def_id: String, kind: String, quest_id: String, override: Dictionary = {}) -> void:
+	if not task_defs.has(def_id):
+		return
+	var inst := {
+		"inst_id": _alloc_inst_id(),
 		"def_id": def_id,
-		"source": source,
+		"kind":   kind,     # ← канонично
+		"source": kind,     # ← для совместимости со старым кодом
 		"quest_id": quest_id
-	})
+	}
+	for k in override.keys():
+		inst[k] = override[k]  # title, color, events_override ...
+	active_task_pool.append(inst)
+
 
 func can_schedule(hero: String, inst_id: int, start_slot: int) -> bool:
 	var def_id := _inst_def(inst_id)
@@ -175,35 +365,92 @@ func can_schedule(hero: String, inst_id: int, start_slot: int) -> bool:
 			return false
 	return true
 
+func _on_task_finished(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
+	var state := "неудачно"
+	if success:
+		state = "успешно"
+	var msg := "%s: задача завершена %s." % [hero, state]
+
+	var k := int(rewards.get("krestli", 0))
+	if k > 0:
+		msg += " +%d кр." % k
+	var eth := int(rewards.get("etheria", 0))
+	if eth > 0:
+		msg += " +%d эф." % eth
+	if rewards.has("items"):
+		var parts: Array = []
+		for e in rewards["items"]:
+			if typeof(e) == TYPE_DICTIONARY:
+				var id := String(e.get("id",""))
+				var cnt := int(e.get("count",0))
+				if id != "" and cnt > 0:
+					parts.append("%s×%d" % [GameManager.item_title(id), cnt])
+		if parts.size() > 0:
+			msg += " (" + ", ".join(parts) + ")"
+
+	Toasts.warn(msg)
+
 func schedule_task(hero: String, inst_id: int, start_slot: int) -> bool:
-	if not can_schedule(hero, inst_id, start_slot): return false
+	if not can_schedule(hero, inst_id, start_slot):
+		return false
 	var def_id := _inst_def(inst_id)
-	if def_id == "": return false
+	if def_id == "":
+		return false
 	var dur := int(task_defs[def_id].get("duration_slots", 4))
 
-	# убрать из пула
+	# вытащим инстанс из пула (с его оверрайдами)
+	var inst_data := {}
 	for i in range(active_task_pool.size()):
-		if int(active_task_pool[i]["inst_id"]) == inst_id:
+		var it = active_task_pool[i]
+		if int(it.get("inst_id", -1)) == inst_id:
+			inst_data = it
 			active_task_pool.remove_at(i)
 			break
+
+	var rec := {
+		"inst_id": inst_id,
+		"def_id":  def_id,
+		"start":   start_slot,
+		"duration": dur,
+		"progress": 0
+	}
+
+	# перенесём ВСЕ важные поля, если они присутствуют
+	for k in ["title","color","events_override","kind","source","quest_id"]:
+		if inst_data.has(k):
+			rec[k] = inst_data[k]
+
 	var arr = scheduled.get(hero, [])
-	arr.append({ "inst_id":inst_id, "def_id":def_id, "start":start_slot, "duration":dur, "progress":0 })
+	arr.append(rec)
 	scheduled[hero] = arr
+
 	emit_signal("task_pool_changed")
 	emit_signal("schedule_changed")
 	return true
 
+
 func unschedule_task(hero: String, inst_id: int) -> void:
 	var arr = scheduled.get(hero, [])
 	for i in range(arr.size()):
-		if int(arr[i]["inst_id"]) == inst_id:
-			# вернуть в пул
-			active_task_pool.append({ "inst_id":inst_id, "def_id":arr[i]["def_id"], "source":"unscheduled", "quest_id":"" })
+		var rec = arr[i]
+		if int(rec["inst_id"]) == inst_id:
+			var back := {
+				"inst_id":  inst_id,
+				"def_id":   String(rec["def_id"]),
+				"kind":     String(rec.get("kind","daily")),
+				"source":   String(rec.get("kind","daily")),  # синхронизируем
+				"quest_id": String(rec.get("quest_id",""))
+			}
+			for k in ["title","color","events_override"]:
+				if rec.has(k):
+					back[k] = rec[k]
+			active_task_pool.append(back)
 			arr.remove_at(i)
 			break
 	scheduled[hero] = arr
 	emit_signal("task_pool_changed")
 	emit_signal("schedule_changed")
+
 
 func _inst_def(inst_id: int) -> String:
 	for it in active_task_pool:
@@ -215,7 +462,6 @@ func _inst_def(inst_id: int) -> String:
 
 func tick_timeline(slot: int) -> void:
 	timeline_clock["slot"] = slot
-	# старт / прогресс / завершение
 	for hero in party_names:
 		var arr = scheduled.get(hero, [])
 		for s in arr:
@@ -223,23 +469,20 @@ func tick_timeline(slot: int) -> void:
 			var en := st + int(s["duration"])
 			if slot == st:
 				emit_signal("task_started", hero, int(s["inst_id"]))
-			# события по таймлайну
+
 			var def: Dictionary = task_defs.get(String(s["def_id"]), {})
-			for ev in Array(def.get("events", [])):
-				var at := st + int(ev.get("at_rel_slot", -999))
+			var evs: Array = s.get("events_override", def.get("events", []))
+
+			for ev in evs:
+				var at := st + int((ev as Dictionary).get("at_rel_slot", -999))
 				if slot == at:
 					emit_signal("task_event", hero, int(s["inst_id"]), ev)
-			# завершение
+
 			if slot == en:
-				_complete_task(hero, s)   # награды/штрафы
-				# снимаем расписание
-	# очистка завершённых
-	for hero in party_names:
-		var keep := []
-		for s in scheduled.get(hero, []):
-			if int(s["start"]) + int(s["duration"]) > slot:
-				keep.append(s)
-		scheduled[hero] = keep
+				_complete_task(hero, s)
+
+	# … очистка как было …
+
 
 func _complete_task(hero: String, s: Dictionary) -> void:
 	var def: Dictionary = task_defs.get(String(s["def_id"]), {})
@@ -1537,11 +1780,27 @@ func _ready() -> void:
 	_init_satiety_defaults()
 	_init_mood_defaults()
 	_init_current_resources()
+	_recalc_next_inst_id()
+	spawn_quest_tasks("q_intro")
+	spawn_daily_tasks("default")
+	print("[QTEST] quests_all keys: ", quests_all.keys())
 	
 func _init_mood_defaults() -> void:
 	for n in party_names:
 		if not hero_mood.has(n):
 			hero_mood[n] = 50
+
+func unschedule_any(inst_id: int) -> bool:
+	if inst_id <= 0:
+		return false
+	for h in party_names:
+		var arr: Array = scheduled.get(h, [])
+		for s in arr:
+			if typeof(s) == TYPE_DICTIONARY and int(s.get("inst_id", 0)) == inst_id:
+				unschedule_task(h, inst_id)  # уже эмитит schedule_changed / task_pool_changed
+				return true
+	return false
+
 
 func _init_current_resources() -> void:
 	for n in party_names:

@@ -18,3 +18,4 @@ func load_tasks():
 	else:
 		tasks = result  # т.к. в файле массив, result будет Array
 		print("Loaded %d tasks" % tasks.size())
+		
