@@ -117,10 +117,16 @@ func _can_drop_data(pos: Vector2, data: Variant) -> bool:
 
 	var dur := int(data["duration"])
 	var slot := _slot_from_x(pos.x)
+
+	# НОВОЕ: нельзя начинать раньше указателя
+	var now := int(GameManager.timeline_clock.get("slot", 0))
+	if slot < now:
+		return false
+
 	if slot + dur > TOTAL_SLOTS:
 		return false
 
-	# проверка пересечений с уже лежащими карточками
+	# ...твои проверки пересечений как были...
 	for c in get_children():
 		if c == data.get("node", null):
 			continue
@@ -140,6 +146,7 @@ func _can_drop_data(pos: Vector2, data: Variant) -> bool:
 			if slot < en and new_en > st:
 				return false
 	return true
+
 	
 # Вспомогательное: снять инстанс задачи из расписания где бы он ни лежал
 func _unschedule_anywhere(inst_id: int) -> bool:
@@ -172,39 +179,42 @@ func _drop_data(pos: Vector2, data: Variant) -> void:
 	var card: Control = data["node"]
 	var dur  := int(data.get("duration", 1))
 	var inst_id := int(data.get("inst_id", 0))
-
-	# герой этой строки
 	var hero := ""
 	if has_method("get"):
 		var v = get("hero_name")
 		if typeof(v) == TYPE_STRING:
 			hero = String(v)
-	
-	
-	# слот в пределах линии
+
 	var slot := _slot_from_x(pos.x)
 	if slot < 0:
 		slot = 0
 	if slot + dur > TOTAL_SLOTS:
 		slot = TOTAL_SLOTS - dur
+
+	# НОВОЕ: задним числом нельзя
+	var now := int(GameManager.timeline_clock.get("slot", 0))
+	if slot < now:
+		Toasts.warn("Нельзя планировать задним числом.")
+		return
+
 	if not _can_drop_data(pos, data):
 		return
 
-	# --- ГЛАВНОЕ: перед новым планированием в любом случае удаляем старую запись ---
+	# дальше — как у тебя было: сняли старое, поставили новое
 	var scheduled := true
 	if inst_id > 0:
 		_unschedule_anywhere(inst_id)
 		scheduled = GameManager.schedule_task(hero, inst_id, slot)
 
-	# откат, если GM отказал (конфликт и т.п.)
 	if not scheduled:
 		if is_instance_valid(card):
-			var prev_slot := int(card.get("schedule_start_slot")) if card.has_method("get") else -1
+			var prev_slot := -1
+			if card.has_method("get"):
+				prev_slot = int(card.get("schedule_start_slot"))
 			if prev_slot >= 0:
 				var y := (size.y - card.size.y) * 0.5
 				card.position = Vector2(float(prev_slot) * SLOT_WIDTH, y)
 		return
 
-	# расписали успешно — визуал отдаём контроллеру (он перерисует по сигналу)
 	if is_instance_valid(card):
 		card.queue_free()

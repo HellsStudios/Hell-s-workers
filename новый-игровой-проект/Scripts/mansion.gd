@@ -70,6 +70,10 @@ func _dbg_stop_watch() -> void:
 	_dbg_watch_left = 0
 # ====== /DBG ======
 
+func _on_back_to_timeline_pressed() -> void:
+	if GameManager.has_method("goto_timeline"):
+		GameManager.goto_timeline()
+
 func _process(delta: float) -> void:
 	if _input_quarantine_t > 0.0:
 		_input_quarantine_t -= delta
@@ -83,6 +87,9 @@ func _ready() -> void:
 	GameManager.add_or_update_quest("q_intro", "Первый день", "Осмотрись в поместье.")
 	GameManager.add_or_update_quest("q_bag", "Собери сумку", "Переложи 3 предмета герою.")
 	GameManager.add_codex_entry("Печать", "Официальная печать Берита — тяжёлая.")
+	var got := GameManager.claim_completed_quest_rewards()
+	if got.size() > 0:
+		Toasts.ok("Вы получили награду за квест(ы): " + ", ".join(got))
 	# чтобы увидеть «серым»:
 	# GameManager.set_quest_completed("q_intro", true)
 	
@@ -99,6 +106,7 @@ func _on_management_menu_popup_hide() -> void:
 
 func _on_room_2_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:   if event is InputEventMouseButton and event.pressed:
 		print("Комната 2 нажата")
+		_on_back_to_timeline_pressed()
 
 
 func _on_room_3_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:    if event is InputEventMouseButton and event.pressed:

@@ -103,6 +103,84 @@ signal task_finished(hero: String, inst_id: int, success: bool, rewards: Diction
 
 var day_summary := {"krestli":0, "etheria":0, "items":[], "supplies":[]}
 
+var DEBUG_TASKS: bool = true
+
+# --- Scene routing / stack ---
+var timeline_ref: Node = null
+var battle_ref: Node = null
+var _return_scene_path := ""                  # куда вернуться после боя
+const TIMELINE_SCENE := "res://scenes/timeline.tscn"  # свой путь
+const BATTLE_SCENE   := "res://scenes/battle.tscn"    # свой путь
+
+var _battle_payload: Dictionary = {}          # {party:Array, enemies:Array}
+func make_party_hero_defs() -> Array:
+	return make_party_dicts()
+
+func register_timeline(node: Node) -> void:
+	timeline_ref = node
+
+func goto_mansion() -> void:
+	timeline_ref = null
+	get_tree().change_scene_to_file("res://scenes/mansion.tscn")
+
+func goto_timeline() -> void:
+	get_tree().change_scene_to_file("res://scenes/timeline.tscn")
+
+func _suspend_timeline() -> void:
+	if timeline_ref != null:
+		if timeline_ref.has_method("_pause"):
+			timeline_ref.call("_pause")
+		timeline_ref.set_process(false)
+		if "visible" in timeline_ref:
+			timeline_ref.visible = false
+
+func _resume_timeline() -> void:
+	if timeline_ref != null:
+		if "visible" in timeline_ref:
+			timeline_ref.visible = true
+		timeline_ref.set_process(true)
+		if timeline_ref.has_method("_start"):
+			timeline_ref.call("_start")
+
+# enemies: ["id","id2"], heroes: ["Berit","Sally"] (необязательно)
+func push_battle(enemies: Array) -> void:
+	# сохраняем «куда возвращаться» и состояние таймлайна
+	var cs = get_tree().current_scene
+	_return_scene_path = cs.scene_file_path if cs and cs.scene_file_path != "" else TIMELINE_SCENE
+
+	# стопаем бег таймлайна, но НЕ сбрасываем slot
+	timeline_clock["running"] = false
+
+	_battle_payload = {
+		"party": make_party_dicts(),  # твой уже готовый хелпер
+		"enemies": enemies.duplicate()
+	}
+	get_tree().change_scene_to_file(BATTLE_SCENE)
+
+func get_battle_payload() -> Dictionary:
+	return _battle_payload.duplicate(true)
+
+func end_battle(victory: bool, participants: Array = []) -> void:
+	# если поражение — участникам: hp=1, stamina=0
+	if not victory:
+		var who: Array = participants.duplicate()
+		if who.is_empty():
+			# на крайний случай — вся пати
+			who = party_names.duplicate()
+		for name in who:
+			set_res_cur(String(name), "hp", 1)
+			set_res_cur(String(name), "stamina", 0)
+
+	_battle_payload.clear()
+	var back := _return_scene_path if _return_scene_path != "" else TIMELINE_SCENE
+	_return_scene_path = ""
+	get_tree().change_scene_to_file(back)
+
+func _tlog(msg: String, ctx: Dictionary = {}) -> void:
+	if DEBUG_TASKS:
+		print("[TASK] ", msg, " | ", ctx)
+
+
 func _recalc_next_inst_id() -> void:
 	var mx := 0
 	# из пула
@@ -122,12 +200,16 @@ func _alloc_inst_id() -> int:
 	return id
 
 func finish_task(hero: String, inst_id: int, success: bool) -> Dictionary:
-	# находим запись
+	
+	# найдём запись в расписании (чтобы вытащить def_id/kind/quest_id/overrides)
 	var arr: Array = scheduled.get(hero, [])
 	var rec: Dictionary = {}
-	for r in arr:
+	var rec_idx := -1
+	for i in range(arr.size()):
+		var r = arr[i]
 		if int(r.get("inst_id", 0)) == inst_id:
 			rec = r
+			rec_idx = i
 			break
 	if rec.is_empty():
 		return {}
@@ -138,7 +220,7 @@ func finish_task(hero: String, inst_id: int, success: bool) -> Dictionary:
 	if success:
 		rewards = def.get("rewards", {})
 
-	# применяем награды как сможем (дальше твой внутренний учёт)
+	# дневной итог
 	day_summary.krestli += int(rewards.get("krestli",0))
 	day_summary.etheria += int(rewards.get("etheria",0))
 	if rewards.has("items"):
@@ -146,19 +228,62 @@ func finish_task(hero: String, inst_id: int, success: bool) -> Dictionary:
 	if rewards.has("supplies"):
 		day_summary.supplies += rewards.supplies
 
-	# снимаем с расписания
-	unschedule_task(hero, inst_id)
-	emit_signal("schedule_changed")
-	emit_signal("task_finished", hero, inst_id, success, rewards)
-
-	# чейнинг: followup
-	var next_def := String(def.get("next_def",""))
-	if next_def != "":
-		spawn_task_instance(next_def, {"kind":"quest"}) # см. ниже про цвет
+	# 1) УБИРАЕМ со строки БЕЗ возврата в пул по умолчанию
+	unschedule_task(hero, inst_id, false)  # <— ВАЖНО: return_to_pool = false
+	_toast_task_result(hero, def_id, success, rewards)
+	# 2) Если это квестовая и провалена — возвращаем в пул НОВЫЙ инстанс
+	var kind := String(rec.get("kind","daily"))
+	if not success and kind == "quest":
+		var new_inst_id := _alloc_inst_id()
+		var qid := String(rec.get("quest_id",""))
+		var inst := {
+			"def_id": def_id,
+			"inst_id": new_inst_id,
+			"kind": "quest",
+			"quest_id": qid
+		}
+		# если хочешь тащить кастомный title/color/events_override из rec — раскомментируй:
+		# if rec.has("title"):           inst["title"] = rec["title"]
+		# if rec.has("color"):           inst["color"] = rec["color"]
+		# if rec.has("events_override"): inst["events_override"] = rec["events_override"]
+		
+		active_task_pool.append(inst)
 		emit_signal("task_pool_changed")
 
+	emit_signal("task_finished", hero, inst_id, success, rewards)
+	emit_signal("schedule_changed")
+
+	# чейнинг followup (как было у тебя)
+	var next_def := String(def.get("next_def",""))
+	if next_def != "":
+		spawn_task_instance(next_def, {"kind":"quest"})
+		emit_signal("task_pool_changed")
+	_tlog("finish_task ENTER", {"hero": hero, "inst": inst_id, "success": success})
+
+	# после подсчёта rewards:
+	_tlog("finish_task rewards", {"hero": hero, "inst": inst_id, "rewards": rewards})
+
+	# сразу после unschedule_task(...)
+	_tlog("finish_task unscheduled", {"hero": hero, "inst": inst_id})
+
+	# перед followup (если есть):
+	if next_def != "":
+		_tlog("finish_task followup spawn", {"inst": inst_id, "next_def": next_def})
+	var mark_q := String(def.get("quest_complete",""))
+	if mark_q != "":
+		set_quest_completed(mark_q, true)
 	return rewards
 
+func claim_completed_quest_rewards() -> Array:
+	var claimed: Array = []
+	for id in quests_all.keys():
+		var q: Dictionary = quests_all[id]
+		if bool(q.get("completed", false)) and not bool(q.get("_reward_claimed", false)):
+			award_rewards(q.get("rewards", {}))
+			quests_all[id]["_reward_claimed"] = true
+			claimed.append(String(id))
+	return claimed
+	
 var spawned_quests_today := {}  # { quest_id: true/false }
 
 func reset_day_flags() -> void:
@@ -197,7 +322,7 @@ func _find_quest(quest_id: String) -> Dictionary:
 
 func _resolve_event_option(hero: String, inst_id: int, ev_def: Dictionary, opt: Dictionary) -> void:
 	var ok := true
-
+	
 	# проверка квалификации
 	var need: Dictionary = opt.get("qual_need", {})
 	if typeof(need) == TYPE_DICTIONARY:
@@ -216,7 +341,12 @@ func _resolve_event_option(hero: String, inst_id: int, ev_def: Dictionary, opt: 
 		pack = opt.get("on_success", {})
 	else:
 		pack = opt.get("on_fail", {})
-
+		
+	if pack.has("battle"):
+		var bdef: Dictionary = pack["battle"]
+		var eids: Array = bdef.get("enemies", [])
+		push_battle(eids)
+		return
 
 	# применяем выхлоп (деньги/эфирия/опыт/итемы/припасы/кондинции)
 	if pack.has("krestli"):  krestli += int(pack["krestli"])
@@ -353,9 +483,14 @@ func _add_task_instance(def_id: String, kind: String, quest_id: String, override
 
 func can_schedule(hero: String, inst_id: int, start_slot: int) -> bool:
 	var def_id := _inst_def(inst_id)
-	if def_id == "": return false
+	if def_id == "":
+		return false
+
+	var now := int(timeline_clock.get("slot", 0))
+	if start_slot < now:
+		return false
+
 	var dur := int(task_defs[def_id].get("duration_slots", 4))
-	# проверка занятости героя
 	for s in scheduled.get(hero, []):
 		var a := int(s["start"])
 		var b := a + int(s["duration"])
@@ -364,6 +499,72 @@ func can_schedule(hero: String, inst_id: int, start_slot: int) -> bool:
 		if c < b and d > a:
 			return false
 	return true
+
+func _toast_task_result(hero: String, def_id: String, success: bool, rewards: Dictionary) -> void:
+	var title := def_id
+	if task_defs.has(def_id):
+		title = String(task_defs[def_id].get("title", def_id))
+
+	var res_txt := "провал"
+	if success:
+		res_txt = "успех"
+
+	var parts: Array = []
+
+	var k := int(rewards.get("krestli", 0))
+	if k > 0:
+		parts.append("+%d кр." % k)
+
+	var eth := int(rewards.get("etheria", 0))
+	if eth > 0:
+		parts.append("+%d эф." % eth)
+
+	if rewards.has("items"):
+		for e in rewards["items"]:
+			if typeof(e) == TYPE_DICTIONARY:
+				var iid := String(e.get("id",""))
+				var cnt := int(e.get("count",0))
+				if iid != "" and cnt > 0:
+					parts.append("%s×%d" % [item_title(iid), cnt])
+
+	if rewards.has("supplies"):
+		for e in rewards["supplies"]:
+			if typeof(e) == TYPE_DICTIONARY:
+				var sid := String(e.get("id",""))
+				var cnt := int(e.get("count",0))
+				if sid != "" and cnt > 0:
+					parts.append("%s×%d" % [supply_title(sid), cnt])
+
+	var suffix := ""
+	if parts.size() > 0:
+		suffix = " (" + ", ".join(parts) + ")"
+
+	var msg := "%s: %s%s" % [title, res_txt, suffix]
+
+	# Автозагрузка Toasts (как узел /root/Toasts)
+	var t := get_node_or_null("/root/Toasts")
+	if t == null:
+		print(msg)
+		return
+
+	if success:
+		if t.has_method("ok"):
+			t.call("ok", msg)
+		elif t.has_method("info"):
+			t.call("info", msg)
+		elif t.has_method("show_text"):
+			t.call("show_text", msg)
+		else:
+			print(msg)
+	else:
+		if t.has_method("warn"):
+			t.call("warn", msg)
+		elif t.has_method("info"):
+			t.call("info", msg)
+		elif t.has_method("show_text"):
+			t.call("show_text", msg)
+		else:
+			print(msg)
 
 func _on_task_finished(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
 	var state := "неудачно"
@@ -391,14 +592,20 @@ func _on_task_finished(hero: String, inst_id: int, success: bool, rewards: Dicti
 	Toasts.warn(msg)
 
 func schedule_task(hero: String, inst_id: int, start_slot: int) -> bool:
+	# запрет задним числом — если уже добавлял, оставь
+	var now := int(timeline_clock.get("slot", 0))
+	if start_slot < now:
+		return false
+
 	if not can_schedule(hero, inst_id, start_slot):
 		return false
+
 	var def_id := _inst_def(inst_id)
 	if def_id == "":
 		return false
 	var dur := int(task_defs[def_id].get("duration_slots", 4))
 
-	# вытащим инстанс из пула (с его оверрайдами)
+	# достаём инстанс из пула
 	var inst_data := {}
 	for i in range(active_task_pool.size()):
 		var it = active_task_pool[i]
@@ -407,18 +614,14 @@ func schedule_task(hero: String, inst_id: int, start_slot: int) -> bool:
 			active_task_pool.remove_at(i)
 			break
 
-	var rec := {
-		"inst_id": inst_id,
-		"def_id":  def_id,
-		"start":   start_slot,
-		"duration": dur,
-		"progress": 0
-	}
+	var rec := {"inst_id":inst_id, "def_id":def_id, "start":start_slot, "duration":dur, "progress":0}
 
-	# перенесём ВСЕ важные поля, если они присутствуют
-	for k in ["title","color","events_override","kind","source","quest_id"]:
-		if inst_data.has(k):
-			rec[k] = inst_data[k]
+	# тянем ВСЕ важные поля в расписание
+	if inst_data.has("title"):           rec["title"] = inst_data["title"]
+	if inst_data.has("color"):           rec["color"] = inst_data["color"]
+	if inst_data.has("events_override"): rec["events_override"] = inst_data["events_override"]
+	if inst_data.has("kind"):            rec["kind"] = String(inst_data["kind"])          # <— НОВОЕ
+	if inst_data.has("quest_id"):        rec["quest_id"] = String(inst_data["quest_id"])  # <— НОВОЕ
 
 	var arr = scheduled.get(hero, [])
 	arr.append(rec)
@@ -426,31 +629,36 @@ func schedule_task(hero: String, inst_id: int, start_slot: int) -> bool:
 
 	emit_signal("task_pool_changed")
 	emit_signal("schedule_changed")
+	_tlog("schedule_task OK", {"hero": hero, "inst": inst_id, "start": start_slot, "dur": dur})
 	return true
 
 
-func unschedule_task(hero: String, inst_id: int) -> void:
+func unschedule_task(hero: String, inst_id: int, return_to_pool: bool = true) -> void:
 	var arr = scheduled.get(hero, [])
 	for i in range(arr.size()):
 		var rec = arr[i]
 		if int(rec["inst_id"]) == inst_id:
-			var back := {
-				"inst_id":  inst_id,
-				"def_id":   String(rec["def_id"]),
-				"kind":     String(rec.get("kind","daily")),
-				"source":   String(rec.get("kind","daily")),  # синхронизируем
-				"quest_id": String(rec.get("quest_id",""))
-			}
-			for k in ["title","color","events_override"]:
-				if rec.has(k):
-					back[k] = rec[k]
-			active_task_pool.append(back)
+			if return_to_pool:
+				var back_kind := String(rec.get("kind","daily"))
+				var back_qid  := String(rec.get("quest_id",""))
+				active_task_pool.append({
+					"inst_id": inst_id,
+					"def_id": String(rec["def_id"]),
+					"kind": back_kind,
+					"quest_id": back_qid
+				})
+				_tlog("unschedule_task", {
+					"hero": hero,
+					"inst": inst_id,
+					"def_id": String(rec.get("def_id","")),
+					"kind": String(rec.get("kind","")),
+					"quest_id": String(rec.get("quest_id",""))
+				})
 			arr.remove_at(i)
 			break
 	scheduled[hero] = arr
 	emit_signal("task_pool_changed")
 	emit_signal("schedule_changed")
-
 
 func _inst_def(inst_id: int) -> String:
 	for it in active_task_pool:
@@ -462,33 +670,81 @@ func _inst_def(inst_id: int) -> String:
 
 func tick_timeline(slot: int) -> void:
 	timeline_clock["slot"] = slot
-	for hero in party_names:
-		var arr = scheduled.get(hero, [])
-		for s in arr:
-			var st := int(s["start"])
-			var en := st + int(s["duration"])
-			if slot == st:
-				emit_signal("task_started", hero, int(s["inst_id"]))
+	_tlog("tick", {"slot": slot})
 
-			var def: Dictionary = task_defs.get(String(s["def_id"]), {})
+	for hero in party_names:
+		var arr: Array = scheduled.get(hero, [])
+		_tlog("scan hero", {"hero": hero, "count": arr.size()})
+
+		for s in arr:
+			if typeof(s) != TYPE_DICTIONARY:
+				continue
+
+			var inst_id := int(s.get("inst_id", 0))
+			var def_id  := String(s.get("def_id", ""))
+			var st      := int(s.get("start", 0))
+			var dur     := int(s.get("duration", 1))
+			var en      := st + dur
+
+			_tlog("row", {"hero": hero, "inst": inst_id, "def": def_id, "st": st, "en": en, "now": slot})
+
+			# Уже завершали — пропускаем.
+			if bool(s.get("_done", false)):
+				_tlog("skip already done", {"inst": inst_id})
+				continue
+
+			# Старт
+			if slot == st:
+				_tlog("EMIT task_started", {"hero": hero, "inst": inst_id})
+				emit_signal("task_started", hero, inst_id)
+
+			# Эвенты: ТОЛЬКО ДО окончания (строго slot < en)
+			var def: Dictionary = task_defs.get(def_id, {})
 			var evs: Array = s.get("events_override", def.get("events", []))
 
-			for ev in evs:
-				var at := st + int((ev as Dictionary).get("at_rel_slot", -999))
-				if slot == at:
-					emit_signal("task_event", hero, int(s["inst_id"]), ev)
+			if slot < en:
+				for ev in evs:
+					if typeof(ev) != TYPE_DICTIONARY:
+						continue
+					var rel := int(ev.get("at_rel_slot", -999))
+					var at_abs := st + rel
+					if slot == at_abs:
+						var fired_abs: Dictionary = s.get("_fired_abs", {})
+						var key := str(at_abs)
+						if not bool(fired_abs.get(key, false)):
+							fired_abs[key] = true
+							s["_fired_abs"] = fired_abs
+							_tlog("EMIT task_event", {
+								"hero": hero, "inst": inst_id, "at_abs": at_abs, "rel": rel,
+								"text": String(ev.get("text",""))
+							})
+							emit_signal("task_event", hero, inst_id, ev)
 
-			if slot == en:
+			# Завершение (и только один раз)
+			if slot >= en and not bool(s.get("_completed_emitted", false)):
+				s["_completed_emitted"] = true
+				s["_done"] = true
+				_tlog("COMPLETE -> _complete_task", {"hero": hero, "inst": inst_id})
 				_complete_task(hero, s)
 
-	# … очистка как было …
+	# (если у тебя внизу была очистка – оставь как было)
 
 
 func _complete_task(hero: String, s: Dictionary) -> void:
-	var def: Dictionary = task_defs.get(String(s["def_id"]), {})
-	var outcome := _evaluate_outcome(hero, def) # успех/провал, модификаторы
+	if s.is_empty():
+		return
+
+	s["_done"] = true  # больше ни стартов, ни евентов
+
+	var def_id := String(s.get("def_id",""))
+	var def: Dictionary = task_defs.get(def_id, {})
+	var outcome := _evaluate_outcome(hero, def)
+
 	_apply_costs_and_rewards(hero, def, outcome)
-	emit_signal("task_completed", hero, int(s["inst_id"]), outcome)
+	emit_signal("task_completed", hero, int(s.get("inst_id", 0)), outcome)
+
+	# финалим и убираем с линии (квесты/дейлики — по твоей логике в finish_task)
+	finish_task(hero, int(s.get("inst_id", 0)), bool(outcome.get("success", true)))
 
 func _apply_costs_and_rewards(hero: String, def: Dictionary, outcome: Dictionary) -> void:
 	# 1) Базовые расходы (сытость / стамина / мана / хп)

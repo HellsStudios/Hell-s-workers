@@ -6,6 +6,8 @@ var schedule_start_slot: int = -1
 var inst_id: int = 0
 @onready var lbl: Label = $Label
 
+
+
 func _ready() -> void:
 	if lbl:
 		lbl.clip_text = true

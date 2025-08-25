@@ -55,10 +55,15 @@ var enemy_bars: Dictionary = {}  # enemy -> bar
 @export var HB_MAX_SCALE := 1.8
 @export var AOE_CAM_ZOOM := 1.12         # мягкий зум для AoE (меньше CINE_ZOOM)
 @export var AOE_CAM_SHIFT_PX := 180.0    # сдвиг камеры вправо в пикселях экрана
-@export var ENCOUNTER_ENEMIES: Array[String] = ["Yezt","Clue","Alex"]
+@export var ENCOUNTER_ENEMIES: Array = []   # список id врагов из JSON/GM
 @export var DEBUG_SALLY := true
 
-
+func _collect_participants() -> Array:
+	var arr: Array = []
+	for h in heroes:
+		if is_instance_valid(h) and "nick" in h:
+			arr.append(h.nick)
+	return arr
 
 func _dante_basic_attack_apply_turret(actor: Node2D, dmg_in: int) -> int:
 	if actor == null or not is_instance_valid(actor):
@@ -1757,6 +1762,8 @@ func _prepare_skill_for_cast(actor: Node, skill_in: Dictionary) -> Dictionary:
 	return s
 
 func _ready() -> void:
+	var payload := GameManager.get_battle_payload()
+	ENCOUNTER_ENEMIES = Array(payload.get("enemies", [])).duplicate()
 	$UI/ActionPanel.connect("action_selected", Callable(self, "_on_action_selected"))
 	action_panel.hide()
 	get_viewport().connect("size_changed", Callable(self, "_on_viewport_resized"))
@@ -4364,11 +4371,12 @@ func _show_battle_result(result: String) -> void:
 	box.add_child(btn)
 
 	btn.pressed.connect(func():
+		# уведомим (если где-то подписывались)
 		emit_signal("battle_finished", result)
-		if EXIT_SCENE != "":
-			if ResourceLoader.exists(EXIT_SCENE):
-				get_tree().change_scene_to_file(EXIT_SCENE)
-				return
-		get_tree().quit()
+
+		# возврат в таймлайн через GM, без прямого change_scene_to_file
+		var victory := (result == "victory")
+		var participants := _collect_participants()
+		GameManager.end_battle(victory, participants)
 	)
 	

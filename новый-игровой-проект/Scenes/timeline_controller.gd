@@ -1,7 +1,7 @@
 extends Node
 
 const SLOT_WIDTH: float = 25.0
-
+var _event_seen: Dictionary = {}
 @onready var task_list: VBoxContainer = $UI/MainLayout/TaskPoolPanel/TaskList
 @onready var card_template: ColorRect = $UI/MainLayout/TaskPoolPanel/TaskList/TaskCardTemplate
 @onready var rows_root: VBoxContainer      = $UI/MainLayout/Control/HBoxContainer/TimeLineArea
@@ -22,88 +22,311 @@ var slot_time_accum: float = 0.0
 var base_sec_per_slot: float = 0.7   # 1× скорость
 var speed_mult: float = 1.0          # множитель
 var sec_per_slot: float = 0.7
-
+var day_end_shown: bool = false
 const TOTAL_SLOTS := 48
+var _scene_switching := false
+var _popup_queue: Array = []      # [{kind:"event"/"finish"/"day_end", ...}]
+var _popup_busy: bool = false
 
-func _go_mansion() -> void:
-	GameManager.reset_day_summary()
-	get_tree().change_scene_to_file("res://scenes/mansion.tscn")  # путь подставь свой
+var _event_queue: Array = []            # [{ev, hero, inst}]
 
-func _show_event(ev: Dictionary, hero: String, inst_id: int) -> void:
-	# стопаем таймлайн и включаем «жёсткий» модальный режим
+
+func _format_rewards_bb(rew: Dictionary) -> String:
+	var lines: Array[String] = []
+	var k := int(rew.get("krestli", 0)); if k > 0: lines.append("• Крестли: [b]+%d[/b]" % k)
+	var e := int(rew.get("etheria", 0)); if e > 0: lines.append("• Этерия: [b]+%d[/b]"  % e)
+	if rew.has("items"):
+		for it in rew["items"]:
+			if typeof(it) == TYPE_DICTIONARY:
+				lines.append("• %s × %d" % [GameManager.item_title(String(it.get("id",""))), int(it.get("count",0))])
+	if rew.has("supplies"):
+		for sp in rew["supplies"]:
+			if typeof(sp) == TYPE_DICTIONARY:
+				lines.append("• %s × %d" % [GameManager.supply_title(String(sp.get("id",""))), int(sp.get("count",0))])
+	return "\n".join(lines)
+
+func _show_finish_popup(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
 	event_active = true
 	running = false
 
-	popup.title = "Событие"
-	popup_text.text = String(ev.get("text", ""))
+	# берём твой заголовок/текст, только подчищаем вид и делаем BBCode
+	var title := "Задача завершена"
+	if not success:
+		title = "Задача провалена"
 
-	# СДЕЛАТЬ ОКНО СТРОГО МОДАЛЬНЫМ И НЕЗАКРЫВАЕМЫМ
-	popup.exclusive = true  # блокирует клики/ввод вне окна
-	# спрятать/заблокировать встроенную кнопку "ОК" у AcceptDialog
+	var head := "[center][b]%s[/b][/center]" % title
+	var body := _format_rewards_bb(rewards)
+	if body != "":
+		body = "\n" + body
+
+	popup.title = title
+	popup_text.bbcode_enabled = true
+	popup_text.text = head + body
+
+	# свои кнопки (как у _show_event)
+	for c in popup_buttons.get_children(): c.queue_free()
+	var b := Button.new()
+	b.text = "Ок"
+	b.focus_mode = Control.FOCUS_ALL
+	b.pressed.connect(func():
+		popup.hide()
+		_popups_continue_or_resume()
+	, CONNECT_ONE_SHOT)
+	popup_buttons.add_child(b)
+	b.grab_focus()
+
+	# спрятать дефолтный ОК у AcceptDialog, если он есть
 	var ok_btn := popup.get_ok_button()
 	if ok_btn:
 		ok_btn.visible = false
 		ok_btn.disabled = true
-		ok_btn.focus_mode = Control.FOCUS_NONE
 
-	# перехватываем попытки закрыть крестиком, Esc, Alt+F4
-	if not popup.close_requested.is_connected(_on_event_close_requested):
-		popup.close_requested.connect(_on_event_close_requested)
+	popup.popup_centered()
+	popup.grab_focus()
+
+
+func _queue_event(ev: Dictionary, hero: String, inst_id: int) -> void:
+	_popup_queue.append({"kind":"event","ev":ev,"hero":hero,"inst":inst_id})
+	_try_show_popup()
+
+func _queue_finish(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
+	# финиши — с приоритетом
+	_popup_queue.push_front({"kind":"finish","hero":hero,"inst":inst_id,"success":success,"rewards":rewards})
+	_try_show_popup()
+
+func _queue_day_end(sum: Dictionary) -> void:
+	_popup_queue.append({"kind":"day_end","sum":sum})
+	_try_show_popup()
+
+func _try_show_popup() -> void:
+	if _popup_busy: return
+	if _popup_queue.is_empty(): return
+	_popup_busy = true
+	var req: Dictionary = _popup_queue.pop_front()
+	var kind := String(req.get("kind",""))
+	match kind:
+		"event":
+			_show_event(req["ev"], String(req["hero"]), int(req["inst"]))   # ← твоя рабочая функция
+		"finish":
+			_show_finish_popup(String(req["hero"]), int(req["inst"]), bool(req["success"]), req.get("rewards", {}))
+		"day_end":
+			_show_day_end_popup(req.get("sum", {}))
+		_:
+			_popup_busy = false
+
+func _popups_continue_or_resume() -> void:
+	# Вызывай это после закрытия ЛЮБОГО окна
+	if not _popup_queue.is_empty():
+		# держим паузу, просто показываем следующее
+		_popup_busy = false
+		_try_show_popup()
+	else:
+		_popup_busy = false
+		event_active = false
+		running = true
+
+
+func _find_start_slot(hero: String, inst_id: int) -> int:
+	for s in GameManager.scheduled.get(hero, []):
+		if typeof(s) == TYPE_DICTIONARY and int(s.get("inst_id", 0)) == inst_id:
+			return int(s.get("start", 0))
+	return -1
+
+func _event_key(start_slot: int, ev: Dictionary) -> String:
+	return "%d@%d" % [start_slot, int(ev.get("at_rel_slot", -999))]
+
+func _go_mansion() -> void:
+	if _scene_switching: return
+	_scene_switching = true
+	GameManager.reset_day_summary()
+	get_tree().change_scene_to_file("res://scenes/mansion.tscn")
+
+func _show_event(ev: Dictionary, hero: String, inst_id: int) -> void:
+	event_active = true
+	running = false
+
+	_clear_event_buttons()  # ← на старте
+
+	popup.title = "Событие"
+	popup_text.text = String(ev.get("text", ""))
 
 	# подчистим прошлые кнопки
 	for c in popup_buttons.get_children():
 		c.queue_free()
 
-	# cпавним опции
 	var opts: Array = ev.get("options", [])
 	if opts.is_empty():
-		# Без вариантов — принудительная «кнопка» продолжения (но не "ОК")
 		var b := Button.new()
 		b.text = "Продолжить"
+		b.focus_mode = Control.FOCUS_ALL
 		b.pressed.connect(func():
 			_on_event_option_chosen(hero, inst_id, ev, {}))
 		popup_buttons.add_child(b)
 		b.grab_focus()
 	else:
-		for i in opts.size():
-			var opt = opts[i]
+		for i in range(opts.size()):
+			var opt_local: Dictionary = opts[i]   # фикс замыкания
 			var b := Button.new()
-			b.text = String(opt.get("text", "Вариант %d" % (i + 1)))
+			b.text = String(opt_local.get("text", "Вариант %d" % (i + 1)))
+			b.focus_mode = Control.FOCUS_ALL
 			b.pressed.connect(func():
-				_on_event_option_chosen(hero, inst_id, ev, opt))
+				_on_event_option_chosen(hero, inst_id, ev, opt_local))
 			popup_buttons.add_child(b)
 			if i == 0:
-				b.grab_focus()  # чтобы Enter сразу срабатывал на 1-й опции
+				b.grab_focus()
 
-	popup.popup_centered()
+	# спрятать встроенные ОК/Cancel на всякий
+	var ok_btn := popup.get_ok_button()
+	if ok_btn:
+		ok_btn.visible = false
+		ok_btn.disabled = true
 
-func _on_event_close_requested() -> void:
-	# намеренно НИЧЕГО не закрываем
-	Toasts.warn("Нельзя закрыть событие — выберите вариант.")
 	popup.popup_centered()
 	popup.grab_focus()
 
+
+func _event_abs_key(st: int, ev: Dictionary) -> String:
+	return str(st + int(ev.get("at_rel_slot",-999)))
+
+
+func _drain_event_queue() -> void:
+	if _popup_busy or event_active or _event_queue.is_empty(): return
+	var it = _event_queue.pop_front()
+	_popup_busy = true
+	_show_event(it["ev"], it["hero"], it["inst"])
+
+
+func _on_event_close_requested() -> void:
+	if not event_active:
+		return
+	Toasts.warn("Нельзя закрыть событие — выберите вариант.")
+	# Отложенно переоткрываем на следующий кадр — после штатного hide().
+	popup.call_deferred("popup_centered")
+	popup.call_deferred("grab_focus")
+
 func _on_event_option_chosen(hero: String, inst_id: int, ev: Dictionary, opt: Dictionary) -> void:
-	# закрываем попап, резолвим ивент, снова запускаем таймлайн
 	popup.hide()
 	GameManager._resolve_event_option(hero, inst_id, ev, opt)
 	event_active = false
+	_popup_busy = false
 	running = true
+	call_deferred("_drain_event_queue")
+
+func _show_day_end_popup(sum: Dictionary) -> void:
+	event_active = true
+	running = false
+
+	var msg := "[center][b]Итоги дня[/b][/center]\n"
+	msg += "[b]Крестли:[/b] +%d\n" % int(sum.get("krestli",0))
+	msg += "[b]Этерия:[/b] +%d\n"  % int(sum.get("etheria",0))
+
+	var items: Array = sum.get("items", [])
+	if items.size() > 0:
+		msg += "\n[b]Предметы:[/b]\n"
+		for it in items:
+			if typeof(it) == TYPE_DICTIONARY:
+				msg += "• %s × %d\n" % [GameManager.item_title(String(it.get("id",""))), int(it.get("count",0))]
+
+	var sups: Array = sum.get("supplies", [])
+	if sups.size() > 0:
+		msg += "\n[b]Припасы:[/b]\n"
+		for sp in sups:
+			if typeof(sp) == TYPE_DICTIONARY:
+				msg += "• %s × %d\n" % [GameManager.supply_title(String(sp.get("id",""))), int(sp.get("count",0))]
+
+	popup.title = "День завершён"
+	popup_text.bbcode_enabled = true
+	popup_text.text = msg
+
+	for c in popup_buttons.get_children(): c.queue_free()
+	var b := Button.new()
+	b.text = "В особняк"
+	b.focus_mode = Control.FOCUS_ALL
+	b.pressed.connect(func():
+		popup.hide()
+		GameManager.reset_day_summary()
+		get_tree().change_scene_to_file("res://scenes/mansion.tscn")
+	, CONNECT_ONE_SHOT)
+	popup_buttons.add_child(b)
+	b.grab_focus()
+
+	var ok_btn := popup.get_ok_button()
+	if ok_btn:
+		ok_btn.visible = false
+		ok_btn.disabled = true
+
+	popup.popup_centered()
+	popup.grab_focus()
+
 
 func _on_day_end() -> void:
 	running = false
-	var sum = GameManager.get_day_summary()
-	var msg := "[b]Итоги дня[/b]\n" + "Крестли: +%d\nЭтерия: +%d\n" % [int(sum.krestli), int(sum.etheria)]
-	if sum.items.size() > 0:
-		msg += "Предметы: %s\n" % [JSON.stringify(sum.items)]
-	if sum.supplies.size() > 0:
-		msg += "Припасы: %s\n" % [JSON.stringify(sum.supplies)]
-
+	event_active = true  # блокируем инпут таймлайна, пока окно открыто
+	_event_queue.clear()
+	var sum := GameManager.get_day_summary()
 	popup.title = "День завершён"
-	popup_text.text = msg
-	popup.get_ok_button().text = "В особняк"
-	popup.popup_centered()
+	popup_text.bbcode_enabled = true
+	popup_text.text = _format_day_summary(sum)
+
+	# 1) никаких кастом-кнопок
+	for c in popup_buttons.get_children():
+		c.queue_free()
+	popup_buttons.visible = false
+
+	# 2) используем встроенную ОК
+	popup.dialog_hide_on_ok = true
+	var ok_btn := popup.get_ok_button()
+	if ok_btn:
+		ok_btn.visible = true
+		ok_btn.disabled = false
+		ok_btn.text = "В особняк"
+
+	# 3) не копим повторные подключения
+	if popup.confirmed.is_connected(_go_mansion):
+		popup.confirmed.disconnect(_go_mansion)
 	popup.confirmed.connect(_go_mansion, CONNECT_ONE_SHOT)
+
+	popup.exclusive = true
+	popup.popup_centered()
+	popup.grab_focus()
+
+func _fmt_items(arr: Array) -> String:
+	var parts: Array[String] = []
+	for e in arr:
+		if typeof(e) == TYPE_DICTIONARY:
+			var id := String(e.get("id",""))
+			var cnt := int(e.get("count",0))
+			if id != "" and cnt > 0:
+				parts.append("%s×%d" % [GameManager.item_title(id), cnt])
+	return ", ".join(parts)
+
+func _fmt_supplies(arr: Array) -> String:
+	var parts: Array[String] = []
+	for e in arr:
+		if typeof(e) == TYPE_DICTIONARY:
+			var id := String(e.get("id",""))
+			var cnt := int(e.get("count",0))
+			if id != "" and cnt > 0:
+				parts.append("%s×%d" % [GameManager.supply_title(id), cnt])
+	return ", ".join(parts)
+
+func _format_day_summary(sum: Dictionary) -> String:
+	var lines: Array[String] = []
+	lines.append("[center][b]Итоги дня[/b][/center]")
+	lines.append("[center]Крестли: +%d[/center]" % int(sum.get("krestli",0)))
+	lines.append("[center]Этерия: +%d[/center]" % int(sum.get("etheria",0)))
+
+	var items := _fmt_items(sum.get("items", []))
+	if items != "":
+		lines.append("[center]Предметы: %s[/center]" % items)
+
+	var sups := _fmt_supplies(sum.get("supplies", []))
+	if sups != "":
+		lines.append("[center]Припасы: %s[/center]" % sups)
+
+	return "\n".join(lines)
+
+
 
 # ===== POINTER: helpers =====
 func _pointer_base_x() -> float:
@@ -141,6 +364,7 @@ func _reset_day() -> void:
 	current_slot = 0
 	slot_time_accum = 0.0
 	_set_pointer_x()
+	_event_seen.clear()
 
 func _on_speed_changed(v: float) -> void:
 	speed_mult = max(0.01, v)
@@ -166,9 +390,14 @@ func _ready() -> void:
 		if not GameManager.schedule_changed.is_connected(_redraw_schedule):
 			GameManager.schedule_changed.connect(_redraw_schedule)
 	
+	current_slot = int(GameManager.timeline_clock.get("slot", 0))
+	base_sec_per_slot = float(GameManager.timeline_clock.get("slot_sec", 0.7))
+	sec_per_slot = base_sec_per_slot / max(0.01, float(speed_spin.value))
+	running = bool(GameManager.timeline_clock.get("running", false))
+	
 		# --- POINTER init ---
 	_sync_pointer_rect()
-	_reset_day()
+	_set_pointer_x() #сомнительно
 
 	if play_btn and not play_btn.pressed.is_connected(_start):
 		play_btn.pressed.connect(_start)
@@ -182,20 +411,48 @@ func _ready() -> void:
 
 	set_process(true)
 	
+	if GameManager.task_event.is_connected(_on_task_event):
+		GameManager.task_event.disconnect(_on_task_event)
+	GameManager.task_event.connect(_on_task_event)
 	if GameManager.has_signal("task_started") and not GameManager.task_started.is_connected(_on_task_started):
 		GameManager.task_started.connect(_on_task_started)
-	if GameManager.has_signal("task_event") and not GameManager.task_event.is_connected(_on_task_event):
-		GameManager.task_event.connect(_on_task_event)
+#	if GameManager.has_signal("task_event") and not GameManager.task_event.is_connected(_on_task_event):
+#		GameManager.task_event.connect(_on_task_event)
 	if GameManager.has_signal("task_completed") and not GameManager.task_completed.is_connected(_on_task_completed):
 		GameManager.task_completed.connect(_on_task_completed)
 	if not GameManager.task_finished.is_connected(_on_task_finished):
 		GameManager.task_finished.connect(_on_task_finished)
 
+	# ——— EVENT POPUP: ЖЁСТКАЯ БЛОКИРОВКА ———
 
-	# Закрытие попапа продолжает время
-	if popup and not popup.confirmed.is_connected(func(): running = true):
-		popup.confirmed.connect(func(): running = true)
+	popup.exclusive = true                    # модальная блокировка ввода
+	popup.dialog_hide_on_ok = false           # "Ок" сам окно не закроет
+	if not popup.close_requested.is_connected(_on_event_close_requested):
+		popup.close_requested.connect(_on_event_close_requested)
+
+	# спрятать встроенный ОК — будем юзать свои кнопки
+	var ok_btn := popup.get_ok_button()
+	if ok_btn:
+		ok_btn.visible = false
+		ok_btn.disabled = true
+
 		
+	if GameManager.has_method("register_timeline"):
+		GameManager.register_timeline(self)
+
+func _card_color(kind: String, def: Dictionary) -> Color:
+	# battle помечаем либо по tags:["battle"], либо по флагу def["is_battle"]
+	var tags: Array = def.get("tags", [])
+	var is_battle := bool(def.get("is_battle", false)) or (tags is Array and tags.has("battle"))
+	if is_battle:
+		return Color("#d24a4a") # красный
+
+	if kind == "daily":
+		return Color("#3b82f6") # синий
+
+	# всё остальное (квесты без боя) — жёлтые
+	return Color("#eab308")
+
 func _advance_one_slot() -> void:
 	if event_active:
 		return
@@ -207,7 +464,10 @@ func _advance_one_slot() -> void:
 	_check_task_finishes(current_slot)
 func _on_task_finished(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
 	# UI убирается сам через _redraw_schedule() от schedule_changed
+	print("[UI] task_finished hero=", hero, " inst=", inst_id, " success=", success, " rewards=", rewards)
+	_clear_event_buttons()  # ← ВАЖНО: очистить старые опции события
 	_redraw_schedule()
+	_queue_finish(hero, inst_id, success, rewards)
 	var k := int(rewards.get("krestli",0))
 	var title := ""
 	# находим деф для текста
@@ -218,11 +478,11 @@ func _on_task_finished(hero: String, inst_id: int, success: bool, rewards: Dicti
 	if title == "":
 		# можно достать из пула по def_id инстанса, если хранишь
 		pass
-	var msg := "[b]Задача завершена[/b]: %s\n+%d крестли" % [title, k]
-	popup_text.text = msg
-	popup.title = "Готово"
-	popup.get_ok_button().text = "Ок"
-	popup.popup_centered()
+
+
+		# этот инстанс завершён — все отметки его событий можно забыть
+	_event_seen.erase(inst_id)
+
 
 func _check_task_finishes(slot: int) -> void:
 	for row in rows:
@@ -242,10 +502,35 @@ func _on_task_started(hero: String, inst_id: int) -> void:
 	print("[TL] START  hero=", hero, " inst=", inst_id)
 
 func _on_task_event(hero: String, inst_id: int, ev: Dictionary) -> void:
-	# Пока просто стопаем время и показываем текст события
+	print("[UI] task_event hero=%s inst=%d text=%s" % [hero, inst_id, String(ev.get("text",""))])
+
+	# === АНТИ-ДУБЛЬ (как у тебя было) ===
+	var st := _find_start_slot(hero, inst_id)
+	var key := _event_key(st, ev)
+	var bucket: Dictionary = _event_seen.get(inst_id, {})
+
+	# если уже видели этот (inst_id,rel/abs) — выходим сразу
+	if bucket.has(key):
+		return
+
+	# помечаем «увиденным» СРАЗУ при приходе сигнала,
+	# чтобы даже в очередь второй раз не попал
+	bucket[key] = true
+	_event_seen[inst_id] = bucket
+
+	# === ОЧЕРЕДЬ ПОПАПОВ ===
+	# если сейчас уже открыт попап (событие/финиш/итоги) — лишь ставим в очередь
+	if event_active or popup.visible or _popup_busy:
+		_queue_event(ev, hero, inst_id)
+		return
+
+	# иначе показываем немедленно (твоё окно)
+	_popup_busy = true
 	_show_event(ev, hero, inst_id)
 
+
 func _on_task_completed(hero: String, inst_id: int, outcome: Dictionary) -> void:
+	print("[UI] task_completed hero=", hero, " inst=", inst_id, " success=", bool(outcome.get("success", true)))
 	var ok := bool(outcome.get("success", true))
 	var msg := "Задание завершено: "
 	if ok:
@@ -254,14 +539,35 @@ func _on_task_completed(hero: String, inst_id: int, outcome: Dictionary) -> void
 		msg += "провал"
 	print("[TL] ", msg, " hero=", hero, " inst=", inst_id)
 
+func _clear_event_buttons() -> void:
+	# убрать все кнопки-опции, снять фокус, гарантировать отсутствие подвесов
+	if popup_buttons:
+		for c in popup_buttons.get_children():
+			if c is Button:
+				(c as Button).disabled = true
+			c.queue_free()
+	# на всякий снимаем фокус с диалога вообще
+
+func _task_tooltip(def: Dictionary) -> String:
+	var title := String(def.get("title", def.get("id","")))
+	var desc  := String(def.get("desc", def.get("description","")))
+	var dur   := int(def.get("duration_slots", 4))
+	var need_qual: Dictionary = def.get("require", {}).get("qual", {})
+	var req_lines: Array = []
+	for q in need_qual.keys():
+		# если нужен локализованный тайтл — зови GameManager.qual_title
+		req_lines.append("%s %d+" % [String(q), int(need_qual[q])])
+	var req_txt := ""
+	if req_lines.size() > 0:
+		req_txt = "\nТребуется: " + ", ".join(req_lines)
+	# ToolTip у Control — обычный текст с переносами
+	return "%s\n\n%s\nДлительность: %d×15м%s" % [title, desc, dur, req_txt]
 
 
 func _process(delta: float) -> void:
-	if event_active:
+	if event_active or not running:
 		return
-	if not running:
-		#_set_pointer_x()
-		return
+
 
 	if sec_per_slot <= 0.0:
 		sec_per_slot = 0.7
@@ -277,11 +583,18 @@ func _process(delta: float) -> void:
 				current_slot += 1
 				GameManager.tick_timeline(current_slot)
 
+
 		# стоп у правого края
 		if current_slot >= TOTAL_SLOTS:
 			current_slot = TOTAL_SLOTS
 			running = false
 			slot_time_accum = 0.0
+			_queue_day_end(GameManager.get_day_summary())
+			if not day_end_shown:
+				day_end_shown = true
+				event_active = true
+				_on_day_end()
+			return  # дальше ничего не делаем на этом кадре
 
 	_set_pointer_x()
 
@@ -342,23 +655,19 @@ func _refresh_task_pool() -> void:
 		var def: Dictionary = GameManager.task_defs.get(def_id, {})
 		if def.is_empty():
 			continue
-
+		
 		var node := card_template.duplicate() as ColorRect
 		node.visible = true
 
 		# свойства скрипта карточки
+		node.tooltip_text = _task_tooltip(def)
 		node.set("duration_slots", int(def.get("duration_slots", 4)))
 		node.set("task_name", String(def.get("title", def_id)))
 		node.set("inst_id", int(inst.get("inst_id", 0)))
 		node.set("schedule_start_slot", -1)
 		var kind := String(inst.get("kind","daily"))
-		# ColorRect у карточки:
 		if node is ColorRect:
-			# daily – как было (серый)
-			if kind == "quest":
-				(node as ColorRect).color = Color(0.22, 0.35, 0.55)  # любой контрастный цвет под сюжет
-			else:
-				(node as ColorRect).color = Color(0.6, 0.6, 0.6)
+			node.color = _card_color(kind, def)
 
 		# подпись на вложенном Label (если есть)
 		var lbl: Label = node.get_node_or_null("Label")
@@ -367,7 +676,7 @@ func _refresh_task_pool() -> void:
 				String(def.get("title", def_id)),
 				int(def.get("duration_slots", 4))
 			]
-
+		
 		task_list.add_child(node)
 
 
@@ -406,11 +715,9 @@ func _redraw_schedule() -> void:
 			var card := card_template.duplicate() as ColorRect
 			var kind := String(s.get("kind","daily"))
 			if card is ColorRect:
-				if kind == "quest":
-					card.color = Color(0.22, 0.35, 0.55)
-				else:
-					card.color = Color(0.6, 0.6, 0.6)
+				card.color = _card_color(kind, def)
 			card.visible = true
+			card.tooltip_text = _task_tooltip(def)
 			# сброс якорей/флагов, иначе наследует «растяжку» из пула
 			card.set_anchors_preset(Control.PRESET_TOP_LEFT)
 			card.anchor_right = 0.0
@@ -426,3 +733,13 @@ func _redraw_schedule() -> void:
 			card.position = Vector2(start * SLOT_WIDTH, y)
 			card.set_size(Vector2(dur * SLOT_WIDTH, card.size.y))
 			row.add_child(card)
+			var now := current_slot
+			var active_task := false
+			if now >= start and now < start + dur:
+				active_task = true
+
+			if active_task:
+				card.mouse_filter = Control.MOUSE_FILTER_IGNORE  # не получать мышь → DnD не стартует
+				card.modulate = Color(1, 1, 1, 0.9)              # лёгкий визуальный намёк (не обязательно)
+			else:
+				card.mouse_filter = Control.MOUSE_FILTER_STOP
