@@ -2,6 +2,7 @@
   "task_defs": {
 	"deliver_box": {
 	  "title": "Доставка",
+	  "desc": "Нужно доставить посылку адресату к указанному времени.",
 	  "duration_slots": 8,
 	  "rewards": {
 		"krestli": 40,
@@ -28,7 +29,32 @@
 			{"text":"Ждать", "risk": 0, "on_success":{}, "on_fail":{}}
 		  ]
 		}
-	  ]
+	  ],
+	  "tags": []  
+	},
+
+	"intro_battle": {
+	  "title": "Налётчики на складе",
+	  "desc": "У склада замечены налётчики. Разберитесь с угрозой.",
+	  "duration_slots": 2,
+	  "events": [
+		{
+		  "id": "ambush",
+		  "at_rel_slot": 1,
+		  "text": "На складе — налётчики!",
+		  "options": [
+			{ "text": "В бой!",
+			  "on_success": {
+				"battle": {
+				  "enemies": ["bandit", "bandit", "bandit_capt"]
+				}
+			  }
+			}
+		  ]
+		}
+	  ],
+	  "tags": ["battle"],
+	  "quest_complete": "q_intro"
 	}
   },
 
@@ -46,16 +72,15 @@
 	  "available": true,
 	  "completed": false,
 	  "rewards": {"krestli": 50, "items":[{"id":"sandwich","count":2}]},
-
 	  "tasks": [
 		{
 		  "def": "deliver_box",
 		  "count": 1,
 		  "mode": "immediate",
 		  "unique": true,
-		  "title": "Посылка для кладовщика",       
-		  "color": "#EAA81B",                      
-		  "events": [                              
+		  "title": "Посылка для кладовщика",
+		  "color": "#EAA81B",
+		  "events": [
 			{
 			  "id": "late_train",
 			  "at_rel_slot": 4,
@@ -67,7 +92,8 @@
 				{"text":"Держать темп","risk":0}
 			  ]
 			}
-		  ]
+		  ],
+		  "next_def": "intro_battle"
 		}
 	  ]
 	}
