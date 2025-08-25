@@ -30,6 +30,108 @@ var _popup_busy: bool = false
 
 var _event_queue: Array = []            # [{ev, hero, inst}]
 
+enum PopupMode { NONE, EVENT, INFO }
+var _popup_mode : int = PopupMode.NONE
+
+
+var _finish_queue: Array = []       # элементы: {"hero":String,"inst":int,"success":bool,"rewards":Dictionary}
+
+func _show_finish_popup(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
+	_popup_set_mode_info("Ок")
+	popup.title = "Задача провалена"
+	if success:
+		popup.title = "Задача выполнена" 
+
+	var def_id := ""
+	for s in GameManager.scheduled.get(hero, []):
+		if int(s.get("inst_id", -1)) == inst_id:
+			def_id = String(s.get("def_id",""))
+			break
+	if def_id == "" and GameManager.task_defs.size() > 0:
+		def_id = GameManager._inst_def(inst_id)
+
+	var title := def_id
+	if GameManager.task_defs.has(def_id):
+		title = String(GameManager.task_defs[def_id].get("title", def_id))
+
+	var parts: Array = []
+	var k := int(rewards.get("krestli", 0)); if k>0: parts.append("+%d кр." % k)
+	var e := int(rewards.get("etheria", 0)); if e>0: parts.append("+%d эф." % e)
+
+	if rewards.has("items"):
+		for it in rewards["items"]:
+			if typeof(it)==TYPE_DICTIONARY:
+				parts.append("%s×%d" % [GameManager.item_title(String(it.get("id",""))), int(it.get("count",0))])
+	if rewards.has("supplies"):
+		for sp in rewards["supplies"]:
+			if typeof(sp)==TYPE_DICTIONARY:
+				parts.append("%s×%d" % [GameManager.supply_title(String(sp.get("id",""))), int(sp.get("count",0))])
+
+	var body := "%s\n%s" % [title, ("Успех" if success else "Провал")]
+	if parts.size() > 0:
+		body += "\n" + ", ".join(parts)
+
+	popup_text.text = body
+	popup.popup_centered()
+
+	# один раз на «Ок»
+	popup.confirmed.connect(func():
+		popup.hide()
+		_popup_busy = false
+		_show_next_popup()
+	, CONNECT_ONE_SHOT)
+
+
+func _find_start_slot(hero: String, inst_id: int) -> int:
+	for s in GameManager.scheduled.get(hero, []):
+		if int(s.get("inst_id", -1)) == inst_id:
+			return int(s.get("start", -999))
+	return -999
+
+func _event_key(start_slot: int, ev: Dictionary) -> String:
+	return "%d@%s" % [start_slot, String(ev.get("id", ""))]
+
+func _popup_set_mode_event() -> void:
+	_popup_mode = PopupMode.EVENT
+	event_active = true
+	var ok_btn := popup.get_ok_button()
+	if ok_btn:
+		ok_btn.visible = false
+		ok_btn.disabled = true
+	popup.dialog_hide_on_ok = false
+	popup.exclusive = true
+
+func _popup_set_mode_info(ok_text: String = "Ок") -> void:
+	_popup_mode = PopupMode.INFO
+	event_active = false
+	var ok_btn := popup.get_ok_button()
+	if ok_btn:
+		ok_btn.text = ok_text
+		ok_btn.visible = true
+		ok_btn.disabled = false
+	popup.dialog_hide_on_ok = true
+	popup.exclusive = true
+
+func _queue_event(ev: Dictionary, hero: String, inst_id: int) -> void:
+	_event_queue.append({"ev":ev, "hero":hero, "inst":inst_id})
+
+func _queue_finish(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
+	_finish_queue.append({"hero":hero, "inst":inst_id, "success":success, "rewards":rewards})
+
+func _show_next_popup() -> void:
+	if _popup_busy:
+		return
+	# приоритет: сначала финал задач, затем события
+	if _finish_queue.size() > 0:
+		var f: Dictionary = _finish_queue.pop_front()
+		_popup_busy = true
+		_show_finish_popup(String(f["hero"]), int(f["inst"]), bool(f["success"]), f["rewards"])
+		return
+	if _event_queue.size() > 0:
+		var e: Dictionary = _event_queue.pop_front()
+		_popup_busy = true
+		_show_event(e["ev"], String(e["hero"]), int(e["inst"]))
+
 
 func _format_rewards_bb(rew: Dictionary) -> String:
 	var lines: Array[String] = []
@@ -45,54 +147,18 @@ func _format_rewards_bb(rew: Dictionary) -> String:
 				lines.append("• %s × %d" % [GameManager.supply_title(String(sp.get("id",""))), int(sp.get("count",0))])
 	return "\n".join(lines)
 
-func _show_finish_popup(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
-	event_active = true
-	running = false
 
-	# берём твой заголовок/текст, только подчищаем вид и делаем BBCode
-	var title := "Задача завершена"
-	if not success:
-		title = "Задача провалена"
 
-	var head := "[center][b]%s[/b][/center]" % title
-	var body := _format_rewards_bb(rewards)
-	if body != "":
-		body = "\n" + body
-
-	popup.title = title
-	popup_text.bbcode_enabled = true
-	popup_text.text = head + body
-
-	# свои кнопки (как у _show_event)
-	for c in popup_buttons.get_children(): c.queue_free()
-	var b := Button.new()
-	b.text = "Ок"
-	b.focus_mode = Control.FOCUS_ALL
-	b.pressed.connect(func():
+func _on_event_close_requested() -> void:
+	if _popup_mode == PopupMode.EVENT:
+		Toasts.warn("Нельзя закрыть событие — выберите вариант.")
+		popup.call_deferred("popup_centered")
+		popup.call_deferred("grab_focus")
+	else:
 		popup.hide()
-		_popups_continue_or_resume()
-	, CONNECT_ONE_SHOT)
-	popup_buttons.add_child(b)
-	b.grab_focus()
+		_popup_busy = false
+		_show_next_popup()
 
-	# спрятать дефолтный ОК у AcceptDialog, если он есть
-	var ok_btn := popup.get_ok_button()
-	if ok_btn:
-		ok_btn.visible = false
-		ok_btn.disabled = true
-
-	popup.popup_centered()
-	popup.grab_focus()
-
-
-func _queue_event(ev: Dictionary, hero: String, inst_id: int) -> void:
-	_popup_queue.append({"kind":"event","ev":ev,"hero":hero,"inst":inst_id})
-	_try_show_popup()
-
-func _queue_finish(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
-	# финиши — с приоритетом
-	_popup_queue.push_front({"kind":"finish","hero":hero,"inst":inst_id,"success":success,"rewards":rewards})
-	_try_show_popup()
 
 func _queue_day_end(sum: Dictionary) -> void:
 	_popup_queue.append({"kind":"day_end","sum":sum})
@@ -125,16 +191,6 @@ func _popups_continue_or_resume() -> void:
 		event_active = false
 		running = true
 
-
-func _find_start_slot(hero: String, inst_id: int) -> int:
-	for s in GameManager.scheduled.get(hero, []):
-		if typeof(s) == TYPE_DICTIONARY and int(s.get("inst_id", 0)) == inst_id:
-			return int(s.get("start", 0))
-	return -1
-
-func _event_key(start_slot: int, ev: Dictionary) -> String:
-	return "%d@%d" % [start_slot, int(ev.get("at_rel_slot", -999))]
-
 func _go_mansion() -> void:
 	if _scene_switching: return
 	_scene_switching = true
@@ -142,17 +198,12 @@ func _go_mansion() -> void:
 	get_tree().change_scene_to_file("res://scenes/mansion.tscn")
 
 func _show_event(ev: Dictionary, hero: String, inst_id: int) -> void:
-	event_active = true
+	_popup_set_mode_event()
 	running = false
-
-	_clear_event_buttons()  # ← на старте
-
 	popup.title = "Событие"
 	popup_text.text = String(ev.get("text", ""))
 
-	# подчистим прошлые кнопки
-	for c in popup_buttons.get_children():
-		c.queue_free()
+	for c in popup_buttons.get_children(): c.queue_free()
 
 	var opts: Array = ev.get("options", [])
 	if opts.is_empty():
@@ -165,24 +216,25 @@ func _show_event(ev: Dictionary, hero: String, inst_id: int) -> void:
 		b.grab_focus()
 	else:
 		for i in range(opts.size()):
-			var opt_local: Dictionary = opts[i]   # фикс замыкания
+			var opt_local: Dictionary = opts[i]
 			var b := Button.new()
 			b.text = String(opt_local.get("text", "Вариант %d" % (i + 1)))
 			b.focus_mode = Control.FOCUS_ALL
 			b.pressed.connect(func():
 				_on_event_option_chosen(hero, inst_id, ev, opt_local))
 			popup_buttons.add_child(b)
-			if i == 0:
-				b.grab_focus()
-
-	# спрятать встроенные ОК/Cancel на всякий
-	var ok_btn := popup.get_ok_button()
-	if ok_btn:
-		ok_btn.visible = false
-		ok_btn.disabled = true
+			if i == 0: b.grab_focus()
 
 	popup.popup_centered()
 	popup.grab_focus()
+
+func _on_event_option_chosen(hero: String, inst_id: int, ev: Dictionary, opt: Dictionary) -> void:
+	popup.hide()
+	GameManager._resolve_event_option(hero, inst_id, ev, opt)
+	event_active = false
+	_popup_busy = false
+	running = true
+	_show_next_popup()
 
 
 func _event_abs_key(st: int, ev: Dictionary) -> String:
@@ -196,21 +248,27 @@ func _drain_event_queue() -> void:
 	_show_event(it["ev"], it["hero"], it["inst"])
 
 
-func _on_event_close_requested() -> void:
-	if not event_active:
-		return
-	Toasts.warn("Нельзя закрыть событие — выберите вариант.")
-	# Отложенно переоткрываем на следующий кадр — после штатного hide().
-	popup.call_deferred("popup_centered")
-	popup.call_deferred("grab_focus")
 
-func _on_event_option_chosen(hero: String, inst_id: int, ev: Dictionary, opt: Dictionary) -> void:
-	popup.hide()
-	GameManager._resolve_event_option(hero, inst_id, ev, opt)
-	event_active = false
-	_popup_busy = false
-	running = true
-	call_deferred("_drain_event_queue")
+func _on_task_event(hero: String, inst_id: int, ev: Dictionary) -> void:
+	print("[UI] task_event hero=%s inst=%d text=%s" % [hero, inst_id, String(ev.get("text",""))])
+
+	# анти-дубль
+	var st := _find_start_slot(hero, inst_id)
+	var key := _event_key(st, ev)
+	var bucket: Dictionary = _event_seen.get(inst_id, {})
+	if bucket.has(key):
+		return
+	bucket[key] = true
+	_event_seen[inst_id] = bucket
+
+	# если заняты — ставим в очередь
+	if event_active || popup.visible || _popup_busy:
+		_queue_event(ev, hero, inst_id)
+		return
+
+	_popup_busy = true
+	_show_event(ev, hero, inst_id)
+
 
 func _show_day_end_popup(sum: Dictionary) -> void:
 	event_active = true
@@ -431,10 +489,7 @@ func _ready() -> void:
 		popup.close_requested.connect(_on_event_close_requested)
 
 	# спрятать встроенный ОК — будем юзать свои кнопки
-	var ok_btn := popup.get_ok_button()
-	if ok_btn:
-		ok_btn.visible = false
-		ok_btn.disabled = true
+
 
 		
 	if GameManager.has_method("register_timeline"):
@@ -468,6 +523,7 @@ func _on_task_finished(hero: String, inst_id: int, success: bool, rewards: Dicti
 	_clear_event_buttons()  # ← ВАЖНО: очистить старые опции события
 	_redraw_schedule()
 	_queue_finish(hero, inst_id, success, rewards)
+	_show_next_popup()
 	var k := int(rewards.get("krestli",0))
 	var title := ""
 	# находим деф для текста
@@ -500,33 +556,6 @@ func _check_task_finishes(slot: int) -> void:
 
 func _on_task_started(hero: String, inst_id: int) -> void:
 	print("[TL] START  hero=", hero, " inst=", inst_id)
-
-func _on_task_event(hero: String, inst_id: int, ev: Dictionary) -> void:
-	print("[UI] task_event hero=%s inst=%d text=%s" % [hero, inst_id, String(ev.get("text",""))])
-
-	# === АНТИ-ДУБЛЬ (как у тебя было) ===
-	var st := _find_start_slot(hero, inst_id)
-	var key := _event_key(st, ev)
-	var bucket: Dictionary = _event_seen.get(inst_id, {})
-
-	# если уже видели этот (inst_id,rel/abs) — выходим сразу
-	if bucket.has(key):
-		return
-
-	# помечаем «увиденным» СРАЗУ при приходе сигнала,
-	# чтобы даже в очередь второй раз не попал
-	bucket[key] = true
-	_event_seen[inst_id] = bucket
-
-	# === ОЧЕРЕДЬ ПОПАПОВ ===
-	# если сейчас уже открыт попап (событие/финиш/итоги) — лишь ставим в очередь
-	if event_active or popup.visible or _popup_busy:
-		_queue_event(ev, hero, inst_id)
-		return
-
-	# иначе показываем немедленно (твоё окно)
-	_popup_busy = true
-	_show_event(ev, hero, inst_id)
 
 
 func _on_task_completed(hero: String, inst_id: int, outcome: Dictionary) -> void:

@@ -30,7 +30,37 @@
 		  ]
 		}
 	  ],
-	  "tags": []  
+	  "tags": []
+	},
+
+	"intro_delivery": {
+	  "title": "Посылка для кладовщика",
+	  "desc": "Срочно довезите посылку до склада — кладовщик ждёт.",
+	  "duration_slots": 8,
+	  "rewards": {
+		"krestli": 40,
+		"items": [{"id":"sandwich","count":1}]
+	  },
+	  "base_cost": {"satiety": 6, "stamina": 10},
+	  "require": {"qual":{"courier":1}},
+	  "affinity": {
+		"mood": {"per10": 2}
+	  },
+	  "events": [
+		{
+		  "id": "intro_hurry",
+		  "at_rel_slot": 3,
+		  "text": "Кладовщик торопит: «Если успеете — премия!»",
+		  "options": [
+			{"text":"Рвануть коротким путём", "risk": 20,
+			 "on_success":{"krestli":30},
+			 "on_fail":{"cond_add":["fatigue"]}},
+			{"text":"Ехать как планировали", "risk": 0}
+		  ]
+		}
+	  ],
+	  "next_def": "intro_battle",
+	  "tags": ["quest"]
 	},
 
 	"intro_battle": {
@@ -43,11 +73,10 @@
 		  "at_rel_slot": 1,
 		  "text": "На складе — налётчики!",
 		  "options": [
-			{ "text": "В бой!",
+			{
+			  "text": "В бой!",
 			  "on_success": {
-				"battle": {
-				  "enemies": ["bandit", "bandit", "bandit_capt"]
-				}
+				"battle": { "enemies": ["Alex", "Clue", "Yezt"] }
 			  }
 			}
 		  ]
@@ -71,29 +100,15 @@
 	  "desc": "Найдите кладовщика и заберите посылку.",
 	  "available": true,
 	  "completed": false,
-	  "rewards": {"krestli": 50, "items":[{"id":"sandwich","count":2}]},
+	  "rewards": { "krestli": 50, "items":[{"id":"sandwich","count":2}] },
 	  "tasks": [
 		{
-		  "def": "deliver_box",
+		  "def": "intro_delivery",
 		  "count": 1,
 		  "mode": "immediate",
 		  "unique": true,
 		  "title": "Посылка для кладовщика",
-		  "color": "#EAA81B",
-		  "events": [
-			{
-			  "id": "late_train",
-			  "at_rel_slot": 4,
-			  "text": "Кладовщик звонит: ускорьтесь любой ценой!",
-			  "options": [
-				{"text":"Рвануть срезкой", "risk": 20,
-				  "on_success":{"krestli":30},
-				  "on_fail":{"cond_add":["fatigue"]}},
-				{"text":"Держать темп","risk":0}
-			  ]
-			}
-		  ],
-		  "next_def": "intro_battle"
+		  "color": "#EAA81B"
 		}
 	  ]
 	}
