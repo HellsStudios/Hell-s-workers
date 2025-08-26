@@ -1,0 +1,123 @@
+[gd_scene load_steps=3 format=3 uid="uid://bs21vxr7b4o8p"]
+
+[ext_resource type="Script" uid="uid://bv3layd2t3gbm" path="res://Scenes/dialog_player.gd" id="1_ssh74"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_ssh74"]
+font_size = 20
+
+[node name="DialogOverlay" type="Control"]
+z_index = 4000
+z_as_relative = false
+layout_mode = 3
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_ssh74")
+
+[node name="Music" type="AudioStreamPlayer2D" parent="."]
+
+[node name="Sfx" type="AudioStreamPlayer2D" parent="."]
+
+[node name="Bg" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+expand_mode = 2
+
+[node name="Shade" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.0980392)
+
+[node name="Portraits" type="Control" parent="."]
+layout_mode = 1
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="LeftSlot" type="Control" parent="Portraits"]
+layout_mode = 1
+anchor_bottom = 1.0
+offset_right = 600.0
+mouse_filter = 2
+
+[node name="Portrait" type="TextureRect" parent="Portraits/LeftSlot"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 4
+
+[node name="PunchSfx" type="AudioStreamPlayer2D" parent="Portraits/LeftSlot"]
+
+[node name="RightSlot" type="Control" parent="Portraits"]
+layout_mode = 1
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -600.0
+mouse_filter = 2
+
+[node name="Portrait" type="TextureRect" parent="Portraits/RightSlot"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 4
+
+[node name="PunchSfx" type="AudioStreamPlayer2D" parent="Portraits/RightSlot"]
+
+[node name="Bottom" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 0.65
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Margin" type="MarginContainer" parent="Bottom"]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Bottom/Margin"]
+layout_mode = 2
+
+[node name="Name" type="Label" parent="Bottom/Margin/VBoxContainer"]
+layout_mode = 2
+label_settings = SubResource("LabelSettings_ssh74")
+
+[node name="Text" type="RichTextLabel" parent="Bottom/Margin/VBoxContainer"]
+custom_minimum_size = Vector2(0, 250)
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/normal_font_size = 40
+bbcode_enabled = true
+fit_content = true
+
+[node name="Choices" type="VBoxContainer" parent="Bottom/Margin"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="ClickCatcher" type="Control" parent="."]
+modulate = Color(1, 1, 1, 0)
+layout_mode = 1
+anchor_right = 1.0
+anchor_bottom = 1.0

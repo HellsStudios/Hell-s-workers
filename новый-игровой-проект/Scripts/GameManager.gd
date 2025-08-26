@@ -62,7 +62,14 @@ var hero_ether_cap: Dictionary = {}       # имя героя -> лимит оч
 var etheria: int = 0                      # общий ресурс «Эфирия»
 
 signal augments_changed
+const DIALOGS_JSON := "res://Data/dialogs.json"
 
+var dialogs_db: Dictionary = {}
+var _dialog_scene := preload("res://Scenes/DialogPlayer.tscn")
+var _dialog_open := false
+
+signal dialog_started(id: String)
+signal dialog_finished(id: String, result: Dictionary)
 
 # Валюта
 var krestli: int = 0
@@ -113,6 +120,108 @@ const TIMELINE_SCENE := "res://scenes/timeline.tscn"  # свой путь
 const BATTLE_SCENE   := "res://scenes/battle.tscn"    # свой путь
 
 var _battle_payload: Dictionary = {}          # {party:Array, enemies:Array}
+
+# --- DIALOGS ----
+
+# что уже проигрывали (чтобы «впервые в особняке» не повторялось)
+var seen_dialogs: Dictionary = {}   # id -> true
+var story_flags: Dictionary = {}    # любые флажки сюжета здесь
+
+
+# В шапку:
+const DIALOG_SCENE := "res://scenes/DialogPlayer.tscn"
+
+var _seen_dialogs := {}
+
+func dialog_seen(id: String) -> bool:
+	return bool(_seen_dialogs.get(id, false))
+
+func _mark_dialog_seen(id: String) -> void:
+	_seen_dialogs[id] = true
+
+func play_dialog(dlg_id: String, parent: Node = null) -> void:
+	var scene := load("res://scenes/DialogPlayer.tscn")  # твой путь
+	if scene == null:
+		push_warning("[Dialog] scene not found"); return
+
+	var layer := CanvasLayer.new()
+	layer.layer = 100   # поверх всего UI
+	var dlg = scene.instantiate()
+	layer.add_child(dlg)
+
+	# в корень вьюпорта — чтобы никакие контейнеры мэншина не ломали якоря
+	get_tree().root.add_child.call_deferred(layer)
+
+	# пауза игры (сохраняем предыдущее состояние)
+	var was_paused := get_tree().paused
+	get_tree().paused = true
+
+	# диалог должен работать в паузе
+	dlg.process_mode = Node.PROCESS_MODE_ALWAYS
+
+	# старт после входа в дерево
+	dlg.call_deferred("play_by_id", dlg_id)
+
+	# завершение
+	dlg.dialog_finished.connect(func(result: Dictionary):
+		get_tree().paused = was_paused
+		layer.queue_free()
+		if has_signal("dialog_finished"):
+			emit_signal("dialog_finished", dlg_id, result)
+	)
+
+
+
+func load_dialogs_db(path: String = DIALOGS_JSON) -> void:
+	if dialogs_db.is_empty() and FileAccess.file_exists(path):
+		var txt := FileAccess.get_file_as_string(path)
+		var parsed = JSON.parse_string(txt)
+		if typeof(parsed) == TYPE_DICTIONARY:
+			dialogs_db = parsed
+
+func mark_dialog_seen(id: String) -> void:
+	seen_dialogs[id] = true
+
+
+# единая точка применения «последствий» из result
+func _apply_dialog_result(id: String, result: Dictionary) -> void:
+	# 1) флаги
+	for f in Array(result.get("set_flags", [])):
+		story_flags[String(f)] = true
+
+	# 2) выдать/обновить квест
+	if result.has("give_quest"):
+		var qid := String(result["give_quest"])
+		# если квест есть в БД — включим его и создадим карточку в журнале
+		set_quest_available(qid, true)
+		add_or_update_quest(qid, String(quests_all.get(qid, {}).get("name", qid)), String(quests_all.get(qid, {}).get("desc","")))
+
+	# 3) заспавнить задачу в пул
+	if result.has("spawn_task_def"):
+		var def_id := String(result["spawn_task_def"])
+		spawn_task_instance(def_id, {"kind":"quest"})
+
+	# 4) старт боя (если диалог так решил)
+	if result.has("battle"):
+		var b: Dictionary = result["battle"]
+		var eids: Array = b.get("enemies", [])
+		var exit_scene := String(b.get("exit_scene", "res://scenes/timeline.tscn"))
+		push_battle(eids)  # используй свою реализацию
+
+	# 5) переход сцены (опционально)
+	if result.has("goto_scene"):
+		var path := String(result["goto_scene"])
+		if path != "":
+			get_tree().change_scene_to_file(path)
+
+
+
+func _on_dialog_finished(id: String, result: Dictionary) -> void:
+	if id == "mansion_intro":
+		# пример: открыть меню, показать туториал и т.п.
+		if bool(result.get("open_board", false)):
+			$QuestBoard.open()
+
 func make_party_hero_defs() -> Array:
 	return make_party_dicts()
 
@@ -341,6 +450,12 @@ func _resolve_event_option(hero: String, inst_id: int, ev_def: Dictionary, opt: 
 		pack = opt.get("on_success", {})
 	else:
 		pack = opt.get("on_fail", {})
+		
+	
+	if pack.has("dialog"):
+		# стопим таймеры/анимации только фактом паузы дерева — остальную логику не трогаем
+		play_dialog(String(pack["dialog"]))
+		# дальше продолжаем обычную обработку (награды/эффекты) — диалог идёт параллельно в паузе
 		
 	if pack.has("battle"):
 		var bdef: Dictionary = pack["battle"]
@@ -2009,6 +2124,7 @@ func _ready() -> void:
 	load_effects_db()
 	load_dante_enhance()
 	load_supplies_db()
+	load_dialogs_db(DIALOGS_JSON)
 	add_to_base("sandwich", 10)
 	_build_hero_bags_from_pack()
 	_load_quests_from_json(QUESTS_FILE)

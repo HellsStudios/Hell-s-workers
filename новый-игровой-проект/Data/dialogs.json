@@ -1,0 +1,57 @@
+{
+  "dialogs": [
+	{
+	  "id": "d_intro_berit_sally",
+	  "bg": "res://Assets/bg/warehouse_evening.png",
+	  "music": "res://Audio/music/tension.ogg",
+	  "start": "p1",
+	  "nodes": {
+		"p1": {
+		  "type": "line",
+		  "left":  { "char":"Berit", "pose":"angry",   "dim": false },
+		  "right": { "char":"Sally", "pose":"happy",   "dim": true  },
+		  "speaker": "Berit",
+		  "text": "Как же ты достал! Ты нам всю клиентуру распугаешь!",
+		  "sfx": "res://Audio/sfx/dialog_punch.ogg",
+		  "next": "p2"
+		},
+		"p2": {
+		  "type": "line",
+		  "left":  { "char":"Berit", "pose":"angry",   "dim": true  },
+		  "right": { "char":"Sally", "pose":"annoyed", "dim": false },
+		  "speaker": "Sally",
+		  "text": "Подумаешь, парочку детишек бутылкой напугал... Коктейль Молотова в первый раз видят?",
+		  "next": "c1"
+		},
+		"c1": {
+		  "type": "choice",
+		  "prompt": "Как ответить Салли?",
+		  "options": [
+			{ "text": "Ладно, перегнул. Извини.",
+			  "goto": "end_good",
+			  "effects": { "mood": {"Sally": 5} }
+			},
+			{ "text": "Да расслабься ты.",
+			  "goto": "end_battle",
+			  "effects": { "mood": {"Sally": -5} }
+			}
+		  ]
+		},
+		"end_good": {
+		  "type": "end",
+		  "effects": {
+			"spawn_tasks": [ { "def":"deliver_box_berit", "kind":"quest" } ]
+		  }
+		},
+		"end_battle": {
+		  "type": "end",
+		  "effects": {
+			"battle": { "enemies": ["bandit", "bandit_capt"], "exit_scene": "res://scenes/timeline.tscn" },
+			"add_condition": { "Berit": ["injury"] },
+			"quest_complete": "q_intro"
+		  }
+		}
+	  }
+	}
+  ]
+}

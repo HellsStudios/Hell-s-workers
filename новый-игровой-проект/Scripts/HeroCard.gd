@@ -319,8 +319,7 @@ func _refresh_mechanic() -> void:
 
 		bar.value = charge
 
-	# Ветку "остальные" не выполняем
-	return
+
 	# ── Остальные герои: обычная механика (как было) ──
 	var m := {}
 	if hero.has_method("get_mechanic"):
@@ -352,3 +351,5 @@ func _refresh_mechanic() -> void:
 	else:
 		mech_val.text = "%s: %d" % [name, v]
 	mech_val.show()
+	# Ветку "остальные" не выполняем
+	return

@@ -92,6 +92,15 @@ func _ready() -> void:
 		Toasts.ok("Вы получили награду за квест(ы): " + ", ".join(got))
 	# чтобы увидеть «серым»:
 	# GameManager.set_quest_completed("q_intro", true)
+	if not GameManager.get_meta("intro_dialog_shown", false):
+		GameManager.set_meta("intro_dialog_shown", true)
+		GameManager.play_dialog("d_intro_berit_sally", self)
+	if not GameManager.is_connected("dialog_finished", _on_dialog_finished):
+		GameManager.dialog_finished.connect(_on_dialog_finished)
+
+func _maybe_play_intro() -> void:
+	if not GameManager.dialog_seen("d_intro_berit_sally"):
+		GameManager.play_dialog("d_intro_berit_sally")
 	
 func _on_manage_button_pressed() -> void:
 	cam.set_drag_enabled(false)
@@ -102,7 +111,9 @@ func _on_management_menu_popup_hide() -> void:
 	cam.set_drag_enabled(true)
 	cam.cancel_drag()
 
-
+func _on_dialog_finished(id: String, res: Dictionary) -> void:
+	if id != "d_intro_berit_sally":
+		return
 
 func _on_room_2_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:   if event is InputEventMouseButton and event.pressed:
 		print("Комната 2 нажата")
