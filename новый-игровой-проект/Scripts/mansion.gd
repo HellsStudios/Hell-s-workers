@@ -17,7 +17,7 @@ var _cam_phys_prev := true
 @onready var manage_menu: PopupPanel = $UI/ManagementMenu
 @onready var manage_btn: Button = $UI/TopBar/ManageButton
 
-
+@onready var end_day_confirm: ConfirmationDialog = $UI/EndDayConfirm
 
 func _on_room_1_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -80,10 +80,25 @@ func _process(delta: float) -> void:
 		if _input_quarantine_t <= 0.0 and $Camera2D:
 			$Camera2D.set_process(_cam_proc_prev)
 			$Camera2D.set_physics_process(_cam_phys_prev)
+			
+@onready var timeline_button := $Camera2D/Room2 # подставь свой путь
+
+
+
+func _on_ToTimelineButton_pressed() -> void:
+	if GameManager.timeline_used_today:
+		GameManager.toast("Сегодня вы уже занимались делами.")
+		return
+	# заходим днём
+	GameManager.current_phase = 1
+	_apply_phase_visuals()
+	get_tree().change_scene_to_file("res://Scenes/timeline.tscn")
+
 
 func _ready() -> void:
 	set_process(true)  # нужно для таймового логирования
 	# ... остальное как у тебя было ...
+	_apply_phase_visuals()
 	GameManager.add_or_update_quest("q_intro", "Первый день", "Осмотрись в поместье.")
 	GameManager.add_or_update_quest("q_bag", "Собери сумку", "Переложи 3 предмета герою.")
 	GameManager.add_codex_entry("Печать", "Официальная печать Берита — тяжёлая.")
@@ -97,6 +112,67 @@ func _ready() -> void:
 		GameManager.play_dialog("d_intro_berit_sally", self)
 	if not GameManager.is_connected("dialog_finished", _on_dialog_finished):
 		GameManager.dialog_finished.connect(_on_dialog_finished)
+	if !is_instance_valid(end_day_confirm):
+		end_day_confirm = ConfirmationDialog.new()
+		end_day_confirm.name = "EndDayConfirm"
+		end_day_confirm.title = "Завершить день?"
+		end_day_confirm.dialog_text = "Перейти к следующему дню?"
+		add_child(end_day_confirm)
+	end_day_confirm.confirmed.connect(_on_end_day_confirmed)
+
+func _on_end_day_confirmed() -> void:
+	# опциональный финальный диалог дня
+	if GameManager.has_method("play_dialog"):
+		if GameManager.has_signal("dialog_finished"):
+			GameManager.dialog_finished.connect(func(id, _r):
+				if id == "d_end_of_day":
+					_finish_day_flow()
+					_fix_stuck_mouse()
+			, CONNECT_ONE_SHOT)
+		GameManager.play_dialog("d_end_of_day", self)  # только 2 аргумента
+	else:
+		_finish_day_flow()
+		_fix_stuck_mouse()
+
+func _finish_day_flow() -> void:
+	# Победа?
+	if GameManager.check_victory_and_maybe_quit(self):
+		return
+	# Заканчиваем день
+	GameManager.end_day()
+	_apply_phase_visuals()
+
+func _fix_stuck_mouse() -> void:
+	# 1) «съесть» текущий ввод и отпустить фокус
+	var vp := get_viewport()
+	if vp:
+		vp.set_input_as_handled()
+		vp.gui_release_focus()
+
+	# 2) дождаться следующего кадра, чтобы UI успел скрыться
+	await get_tree().process_frame
+
+	# 3) вручную отправить всем «отпускание ЛКМ»,
+	#    чтобы камера получила корректное состояние
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = false
+	ev.position = vp.get_mouse_position() if vp else Vector2.ZERO
+	Input.parse_input_event(ev)
+
+
+func _apply_phase_visuals() -> void:
+	var col := Color(1, 0.95, 0.8) # утро
+	match GameManager.current_phase:
+		0: col = Color(1, 0.95, 0.8)
+		1: col = Color(1, 1, 1)
+		2: col = Color(1, 0.8, 0.6)
+		3: col = Color(0.2, 0.2, 0.4)
+	$Camera2D/CanvasModulate.color = col
+
+	var label := get_node("/root/Mansion/UI/PanelDay/DayLabel")
+	label.text = "День: %d %s" % [GameManager.day, GameManager.phase_names[GameManager.current_phase]]
+
 
 func _maybe_play_intro() -> void:
 	if not GameManager.dialog_seen("d_intro_berit_sally"):
@@ -117,11 +193,18 @@ func _on_dialog_finished(id: String, res: Dictionary) -> void:
 
 func _on_room_2_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:   if event is InputEventMouseButton and event.pressed:
 		print("Комната 2 нажата")
-		_on_back_to_timeline_pressed()
+		if GameManager.timeline_used_today:
+			GameManager.toast("Сегодня вы уже занимались делами.")
+		else:
+			_on_back_to_timeline_pressed()
 
 
 func _on_room_3_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:    if event is InputEventMouseButton and event.pressed:
 		print("Комната 3 нажата")
+		if event is InputEventMouseButton and event.pressed:
+			# Если уже вечер/ночь или таймлайн пройден — можно завершать день
+			end_day_confirm.dialog_text = "Закончить день и перейти к утру?"
+			end_day_confirm.popup_centered_ratio(0.25)
 
 func _release_mouse_buttons() -> void:
 	var pos := get_viewport().get_mouse_position()

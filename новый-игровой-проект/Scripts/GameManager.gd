@@ -133,6 +133,107 @@ const DIALOG_SCENE := "res://scenes/DialogPlayer.tscn"
 
 var _seen_dialogs := {}
 
+# один раз в день можно в таймлайн
+var timeline_used_today: bool = false
+
+# Порог победы для плейтеста
+const WIN_KRESTLI := 300
+
+# Ночной расход и восстановление
+const NIGHT_SATIETY_DECAY := 8
+
+signal day_started(day:int)   # на утро
+signal day_ended(day:int)     # когда уходим спать
+
+# === Хелпер: безопасно напечатать тост (если нет — просто print)
+func toast(msg: String) -> void:
+	if has_method("_show_toast"):
+		call("_show_toast", msg)
+	else:
+		print("[TOAST] ", msg)
+
+# === Утро нового дня
+func start_new_day() -> void:
+	timeline_used_today = false
+	current_phase = 0  # утро
+
+	# восстановление/расход ночью
+	if has_method("get_party_names"):
+		for nick in get_party_names():
+			# Максимально «бережно»: если полей нет — пропускаем
+			var st_max := int(get_hero_prop(nick, "max_stamina", 100))
+			set_hero_prop(nick, "stamina", st_max)
+			var sat := int(get_hero_prop(nick, "satiety", 50))
+			set_hero_prop(nick, "satiety", max(0, sat - NIGHT_SATIETY_DECAY))
+			# Случайные состояния (если у тебя есть такая механика)
+			if has_method("add_condition") and randi()%100 < 10:
+				add_condition(nick, "fatigue") # пример: 10% «усталость»
+
+	# Обновить пул дейликов
+	refresh_daily_tasks()
+
+	emit_signal("day_started", day)
+
+# === Конец дня (с диалогом или без него вызывается снаружи)
+func end_day() -> void:
+	emit_signal("day_ended", day)
+	day += 1
+	start_new_day()
+
+# === Обновление дейликов (подхватит твои существ. функции, если есть)
+func refresh_daily_tasks() -> void:
+	if has_method("spawn_daily_tasks"):
+		call("spawn_daily_tasks")           # если такая уже есть
+	elif has_method("rebuild_daily_pool"):
+		call("rebuild_daily_pool")          # или любая твоя
+	# если их нет — таймлайн сам подтянет из pools при старте
+
+# === Таймлайн: отметка «сегодня уже работали»
+func mark_timeline_used() -> void:
+	timeline_used_today = true
+
+# === Победа по крестлям
+
+func check_victory_and_maybe_quit(parent: Node = null) -> bool:
+	var kv = get("krestli")          # Node.get — только 1 аргумент
+	var krestli = (kv if kv != null else 0)
+	if int(krestli) >= WIN_KRESTLI:
+		if has_method("play_dialog"):
+			# одноразово ждём завершение диалога «d_victory»
+			if has_signal("dialog_finished"):
+				dialog_finished.connect(func(id, _r):
+					if id == "d_victory":
+						get_tree().quit()
+				, CONNECT_ONE_SHOT)
+			play_dialog("d_victory", parent)  # ровно 2 аргумента
+		else:
+			get_tree().quit()
+		return true
+	return false
+
+# ===== Небольшие хелперы работы с героями (безопасные) =====
+func get_party_names() -> Array:
+	var a = get("party_names")
+	return (a if typeof(a) == TYPE_ARRAY else [])
+
+func get_hero_prop(nick: String, key: String, def):
+	var heroes = get("heroes")
+	if typeof(heroes) == TYPE_DICTIONARY and heroes.has(nick):
+		var h = heroes[nick]
+		if typeof(h) == TYPE_DICTIONARY and h.has(key):
+			return h[key]
+	return def
+
+func set_hero_prop(nick: String, key: String, val) -> void:
+	var heroes = get("heroes")
+	if typeof(heroes) == TYPE_DICTIONARY and heroes.has(nick):
+		var h = heroes[nick]
+		if typeof(h) == TYPE_DICTIONARY:
+			h[key] = val
+			heroes[nick] = h
+			set("heroes", heroes)
+
+
 func dialog_seen(id: String) -> bool:
 	return bool(_seen_dialogs.get(id, false))
 

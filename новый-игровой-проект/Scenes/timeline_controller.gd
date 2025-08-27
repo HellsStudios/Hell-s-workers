@@ -33,11 +33,19 @@ var _event_queue: Array = []            # [{ev, hero, inst}]
 enum PopupMode { NONE, EVENT, INFO }
 var _popup_mode : int = PopupMode.NONE
 
+var _pause_stack := 0
+
+func push_pause() -> void:
+	_pause_stack += 1
+
+func pop_pause() -> void:
+	_pause_stack = max(0, _pause_stack - 1)
 
 var _finish_queue: Array = []       # элементы: {"hero":String,"inst":int,"success":bool,"rewards":Dictionary}
 
 func _show_finish_popup(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
 	_popup_set_mode_info("Ок")
+	push_pause()
 	popup.title = "Задача провалена"
 	if success:
 		popup.title = "Задача выполнена" 
@@ -77,6 +85,7 @@ func _show_finish_popup(hero: String, inst_id: int, success: bool, rewards: Dict
 	# один раз на «Ок»
 	popup.confirmed.connect(func():
 		popup.hide()
+		pop_pause()
 		_popup_busy = false
 		_show_next_popup()
 	, CONNECT_ONE_SHOT)
@@ -195,6 +204,8 @@ func _go_mansion() -> void:
 	if _scene_switching: return
 	_scene_switching = true
 	GameManager.reset_day_summary()
+	GameManager.mark_timeline_used()
+	GameManager.current_phase = 2  # вечер по условию
 	get_tree().change_scene_to_file("res://scenes/mansion.tscn")
 
 func _show_event(ev: Dictionary, hero: String, inst_id: int) -> void:
@@ -594,6 +605,8 @@ func _task_tooltip(def: Dictionary) -> String:
 
 
 func _process(delta: float) -> void:
+	if _pause_stack > 0:
+		return
 	if event_active or not running:
 		return
 
