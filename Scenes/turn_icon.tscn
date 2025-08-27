@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://0re5k3gng78"]
+
+[node name="TurnIcon" type="TextureRect"]
+custom_minimum_size = Vector2(64, 64)
+offset_right = 40.0
+offset_bottom = 40.0
+stretch_mode = 5
+
+[node name="Label" type="Label" parent="."]
+modulate = Color(1, 1, 1, 0.478431)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_alignment = 1
+vertical_alignment = 1
