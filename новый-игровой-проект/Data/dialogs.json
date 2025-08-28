@@ -32,10 +32,18 @@
 			  "effects": { "mood": {"Sally": 5} }
 			},
 			{ "text": "Да расслабься ты.",
-			  "goto": "end_battle",
+			  "goto": "p3",
 			  "effects": { "mood": {"Sally": -5} }
 			}
 		  ]
+		},
+		"p3": {
+		  "type": "line",
+		  "left":  { "char":"Berit", "pose":"angry",   "dim": true  },
+		  "right": { "char":"Sally", "pose":"annoyed", "dim": false },
+		  "speaker": "Sally",
+		  "text": "А может лучше ты?!",
+		  "next": "end_battle"
 		},
 		"end_good": {
 		  "type": "end",
@@ -46,10 +54,45 @@
 		"end_battle": {
 		  "type": "end",
 		  "effects": {
-			"battle": { "enemies": ["bandit", "bandit_capt"], "exit_scene": "res://scenes/timeline.tscn" },
+			"battle": { "enemies": ["Yezt"], "exit_Scene": "res://Scenes/timeline.tscn" },
 			"add_condition": { "Berit": ["injury"] },
-			"quest_complete": "q_intro"
+			"give_quests": ["q_blackmail", "q_cook_intro"]
 		  }
+		}
+	  }
+	},
+	{
+	  "id": "d_end_of_day_1",
+	  "bg": "res://Assets/bg/warehouse_evening.png",
+	  "start": "p1",
+	  "nodes": {
+		"p1": {
+		  "type": "line",
+		  "left":  { "char":"Berit", "pose":"neutral", "dim": false },
+		  "right": { "char":"Sally", "pose":"neutral", "dim": true  },
+		  "speaker": "Berit",
+		  "text": "День был длинный. Завтра начнём с чистого листа.",
+		  "next": "p2"
+		},
+		"p2": {
+		  "type": "line",
+		  "left":  { "char":"Berit", "pose":"neutral", "dim": true  },
+		  "right": { "char":"Sally", "pose":"happy",   "dim": false },
+		  "speaker": "Sally",
+		  "text": "С чистого — это хорошо. Только кофе не забудь. И никаких фейерверков, ладно?",
+		  "next": "p3"
+		},
+		"p3": {
+		  "type": "line",
+		  "left":  { "char":"Berit", "pose":"happy",   "dim": false },
+		  "right": { "char":"Sally", "pose":"neutral", "dim": true  },
+		  "speaker": "Berit",
+		  "text": "Ладно-ладно. Спокойной ночи.",
+		  "next": "end"
+		},
+		"end": {
+		  "type": "end",
+		  "effects": { "mood": { "Sally": 2 } }
 		}
 	  }
 	}

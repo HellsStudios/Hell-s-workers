@@ -370,7 +370,7 @@ func _anim_hit_event() -> void:
 func init_from_dict(d: Dictionary) -> void:
 	nick = d.get("nick", "Hero")
 	team = d.get("team", "hero")
-	max_health = d.get("max_hp", 100)
+	max_health = d.get("max_health", 100)
 	max_mana = d.get("max_mana", 0)
 	max_stamina = d.get("max_stamina", 0)
 	attack = d.get("attack", 10)

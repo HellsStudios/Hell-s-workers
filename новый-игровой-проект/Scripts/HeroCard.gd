@@ -267,6 +267,7 @@ func _refresh_mechanic() -> void:
 		return  # ← не прячем механику ниже
 	if String(hero.nick) == "Dante":
 		# 1) Гарантируем инициализацию без JSON
+		mech_box.show()
 		if not hero.has_meta("dante_charge"):
 			hero.set_meta("dante_charge", 50)
 		if not hero.has_meta("dante_mul"):
@@ -318,7 +319,7 @@ func _refresh_mechanic() -> void:
 			mech_box.add_child(bar)
 
 		bar.value = charge
-
+		return
 
 	# ── Остальные герои: обычная механика (как было) ──
 	var m := {}

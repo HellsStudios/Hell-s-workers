@@ -16,6 +16,7 @@ var _cam_phys_prev := true
 @onready var cam: Camera2D = $Camera2D
 @onready var manage_menu: PopupPanel = $UI/ManagementMenu
 @onready var manage_btn: Button = $UI/TopBar/ManageButton
+@onready var resource: Label = $UI/PanelResources/ResourcesLabel
 
 @onready var end_day_confirm: ConfirmationDialog = $UI/EndDayConfirm
 
@@ -80,6 +81,7 @@ func _process(delta: float) -> void:
 		if _input_quarantine_t <= 0.0 and $Camera2D:
 			$Camera2D.set_process(_cam_proc_prev)
 			$Camera2D.set_physics_process(_cam_phys_prev)
+	resource.text = str("Крестли: ",int(GameManager.krestli))
 			
 @onready var timeline_button := $Camera2D/Room2 # подставь свой путь
 
@@ -92,7 +94,7 @@ func _on_ToTimelineButton_pressed() -> void:
 	# заходим днём
 	GameManager.current_phase = 1
 	_apply_phase_visuals()
-	get_tree().change_scene_to_file("res://Scenes/timeline.tscn")
+	get_tree().change_Scene_to_file("res://Scenes/timeline.tscn")
 
 
 func _ready() -> void:
@@ -121,18 +123,20 @@ func _ready() -> void:
 	end_day_confirm.confirmed.connect(_on_end_day_confirmed)
 
 func _on_end_day_confirmed() -> void:
-	# опциональный финальный диалог дня
-	if GameManager.has_method("play_dialog"):
-		if GameManager.has_signal("dialog_finished"):
-			GameManager.dialog_finished.connect(func(id, _r):
-				if id == "d_end_of_day":
-					_finish_day_flow()
-					_fix_stuck_mouse()
-			, CONNECT_ONE_SHOT)
-		GameManager.play_dialog("d_end_of_day", self)  # только 2 аргумента
+	var candidate := "d_end_of_day_%d" % GameManager.day     # например: d_end_of_day_1, _2, ...
+	var dlg_id := (candidate if GameManager.dialog_exists(candidate) else "d_end_of_day")
+
+	if GameManager.has_signal("dialog_finished"):
+		GameManager.dialog_finished.connect(func(id, _r):
+			if id == dlg_id:
+				_finish_day_flow()
+				_fix_stuck_mouse()
+		, CONNECT_ONE_SHOT)
 	else:
 		_finish_day_flow()
 		_fix_stuck_mouse()
+	GameManager.play_dialog(dlg_id, self)
+
 
 func _finish_day_flow() -> void:
 	# Победа?

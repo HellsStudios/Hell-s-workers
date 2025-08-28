@@ -28,13 +28,13 @@ var _berit_recipes := {}
 const SALLY_ENH_JSON := "res://Data/sally_enhance.json"
 var _sally_enh_cache: Dictionary = {}
 
-const EFFECTS_FILE := "res://data/effects.json"
+const EFFECTS_FILE := "res://Data/effects.json"
 
 var EFFECTS_DB: Dictionary = {}   # id -> прототип эффекта
 
 static var _sally_words_pool: Array = []
 
-const DANTE_ENHANCE_PATH := "res://data/dante_enhance.json"
+const DANTE_ENHANCE_PATH := "res://Data/dante_enhance.json"
 
 # GameManager.gd (добавь к полям одно из верхних мест)
 var dante_enhance: Dictionary = {}
@@ -116,8 +116,8 @@ var DEBUG_TASKS: bool = true
 var timeline_ref: Node = null
 var battle_ref: Node = null
 var _return_scene_path := ""                  # куда вернуться после боя
-const TIMELINE_SCENE := "res://scenes/timeline.tscn"  # свой путь
-const BATTLE_SCENE   := "res://scenes/battle.tscn"    # свой путь
+const TIMELINE_SCENE := "res://Scenes/timeline.tscn"  # свой путь
+const BATTLE_SCENE   := "res://Scenes/battle.tscn"    # свой путь
 
 var _battle_payload: Dictionary = {}          # {party:Array, enemies:Array}
 
@@ -129,7 +129,7 @@ var story_flags: Dictionary = {}    # любые флажки сюжета зд�
 
 
 # В шапку:
-const DIALOG_SCENE := "res://scenes/DialogPlayer.tscn"
+const DIALOG_SCENE := "res://Scenes/DialogPlayer.tscn"
 
 var _seen_dialogs := {}
 
@@ -145,6 +145,51 @@ const NIGHT_SATIETY_DECAY := 8
 signal day_started(day:int)   # на утро
 signal day_ended(day:int)     # когда уходим спать
 
+var _path_index: Dictionary = {}  # lowercased full path -> real-cased full path
+
+func _build_path_index() -> void:
+	_path_index.clear()
+	var stack := ["res://"]
+	while not stack.is_empty():
+		var dir_path = stack.pop_back()
+		var d := DirAccess.open(dir_path)
+		if d == null: continue
+		d.list_dir_begin()
+		var name := d.get_next()
+		while name != "":
+			if name.begins_with("."):
+				name = d.get_next(); continue
+			var full := d.get_current_dir().path_join(name)
+			if d.current_is_dir():
+				stack.append(full)
+			else:
+				_path_index[full.to_lower()] = full
+			name = d.get_next()
+		d.list_dir_end()
+
+func resolve_res_path(p: String) -> String:
+	if p == "" or not p.begins_with("res://"): return p
+	if _path_index.is_empty():
+		_build_path_index()
+	var key := p.to_lower()
+	return String(_path_index.get(key, p))
+
+func res_exists(p: String) -> bool:
+	return ResourceLoader.exists(resolve_res_path(p))
+
+func res_load(p: String):
+	return load(resolve_res_path(p))
+
+func file_exists(p: String) -> bool:
+	return FileAccess.file_exists(resolve_res_path(p))
+
+func file_text(p: String) -> String:
+	var real := resolve_res_path(p)
+	return FileAccess.get_file_as_string(real) if FileAccess.file_exists(real) else ""
+
+func change_scene_safe(p: String) -> void:
+	get_tree().change_scene_to_file(resolve_res_path(p))
+
 # === Хелпер: безопасно напечатать тост (если нет — просто print)
 func toast(msg: String) -> void:
 	if has_method("_show_toast"):
@@ -156,7 +201,8 @@ func toast(msg: String) -> void:
 func start_new_day() -> void:
 	timeline_used_today = false
 	current_phase = 0  # утро
-
+	timeline_clock["slot"] = 0
+	timeline_clock["running"] = false
 	# восстановление/расход ночью
 	if has_method("get_party_names"):
 		for nick in get_party_names():
@@ -241,7 +287,7 @@ func _mark_dialog_seen(id: String) -> void:
 	_seen_dialogs[id] = true
 
 func play_dialog(dlg_id: String, parent: Node = null) -> void:
-	var scene := load("res://scenes/DialogPlayer.tscn")  # твой путь
+	var scene := load("res://Scenes/DialogPlayer.tscn")  # твой путь
 	if scene == null:
 		push_warning("[Dialog] scene not found"); return
 
@@ -283,6 +329,14 @@ func load_dialogs_db(path: String = DIALOGS_JSON) -> void:
 func mark_dialog_seen(id: String) -> void:
 	seen_dialogs[id] = true
 
+func dialog_exists(id: String) -> bool:
+	load_dialogs_db(DIALOGS_JSON)
+	var arr = dialogs_db.get("dialogs", [])
+	if typeof(arr) != TYPE_ARRAY: return false
+	for d in arr:
+		if typeof(d) == TYPE_DICTIONARY and String(d.get("id","")) == id:
+			return true
+	return false
 
 # единая точка применения «последствий» из result
 func _apply_dialog_result(id: String, result: Dictionary) -> void:
@@ -306,7 +360,7 @@ func _apply_dialog_result(id: String, result: Dictionary) -> void:
 	if result.has("battle"):
 		var b: Dictionary = result["battle"]
 		var eids: Array = b.get("enemies", [])
-		var exit_scene := String(b.get("exit_scene", "res://scenes/timeline.tscn"))
+		var exit_scene := String(b.get("exit_scene", "res://Scenes/timeline.tscn"))
 		push_battle(eids)  # используй свою реализацию
 
 	# 5) переход сцены (опционально)
@@ -331,10 +385,10 @@ func register_timeline(node: Node) -> void:
 
 func goto_mansion() -> void:
 	timeline_ref = null
-	get_tree().change_scene_to_file("res://scenes/mansion.tscn")
+	get_tree().change_scene_to_file("res://Scenes/mansion.tscn")
 
 func goto_timeline() -> void:
-	get_tree().change_scene_to_file("res://scenes/timeline.tscn")
+	get_tree().change_scene_to_file("res://Scenes/timeline.tscn")
 
 func _suspend_timeline() -> void:
 	if timeline_ref != null:
@@ -1006,37 +1060,29 @@ func _apply_costs_and_rewards(hero: String, def: Dictionary, outcome: Dictionary
 
 	# 2) Награды (если успех — можно оставить как есть; если хочешь,
 	#    можешь смотреть на outcome["success"] и уменьшать выхлоп)
-	var rw: Dictionary = def.get("rewards", {})
+	var success := bool(outcome.get("success", true))
+	if success:
+		var rw: Dictionary = def.get("rewards", {})
 
-	var k := int(rw.get("krestli", 0))
-	if k > 0:
-		krestli += k
+		var k := int(rw.get("krestli", 0))
+		if k > 0:
+			krestli += k
 
-	var eth := int(rw.get("etheria", 0))
-	if eth > 0:
-		add_etheria(eth)
+		var eth := int(rw.get("etheria", 0))
+		if eth > 0:
+			add_etheria(eth)
 
-	var items: Array = rw.get("items", [])
-	for e in items:
-		if typeof(e) != TYPE_DICTIONARY:
-			continue
-		var iid := String(e.get("id",""))
-		var cnt := int(e.get("count", 0))
-		if iid != "" and cnt > 0:
-			add_to_base(iid, cnt)
+		for e in rw.get("items", []):
+			if typeof(e) == TYPE_DICTIONARY:
+				add_to_base(String(e.get("id","")), int(e.get("count", 0)))
 
-	var sups: Array = rw.get("supplies", [])
-	for e in sups:
-		if typeof(e) != TYPE_DICTIONARY:
-			continue
-		var sid := String(e.get("id",""))
-		var cnt := int(e.get("count", 0))
-		if sid != "" and cnt > 0:
-			supplies_add(sid, cnt)
+		for e in rw.get("supplies", []):
+			if typeof(e) == TYPE_DICTIONARY:
+				supplies_add(String(e.get("id","")), int(e.get("count", 0)))
 
-	var qxp: Dictionary = rw.get("qual_xp", {})
-	for qname in qxp.keys():
-		add_qual_xp(hero, String(qname), int(qxp[qname]))
+		var qxp: Dictionary = rw.get("qual_xp", {})
+		for qname in qxp.keys():
+			add_qual_xp(hero, String(qname), int(qxp[qname]))
 
 	# при желании: позитивные/негативные кондинции в зависимости от outcome
 	# if bool(outcome.get("success", true)) == false:
@@ -1204,8 +1250,8 @@ func activate_from_container(meal_id: String, count: int) -> bool:
 # ─────────────────────────────────────────────────────────────────────
 
 # ─── КУХНЯ / ЕДА ─────────────────────────────────────────────────────
-const RECIPES_PATH := "res://data/recipes.json"
-const MEALS_PATH   := "res://data/meals.json"
+const RECIPES_PATH := "res://Data/recipes.json"
+const MEALS_PATH   := "res://Data/meals.json"
 
 var recipes_db: Dictionary = {}    # id -> def из recipes.json
 var meals_db:   Dictionary = {}    # id -> {satiety:int, tags:Array}
@@ -1695,7 +1741,7 @@ func get_party_hero_defs() -> Array:  # удобно для статусов
 			out.append(all_heroes[name])
 	return out
 
-func load_dante_enhance(json_path: String = "res://data/dante_enhance.json") -> void:
+func load_dante_enhance(json_path: String = "res://Data/dante_enhance.json") -> void:
 	if _dante_loaded:
 		return
 	_dante_loaded = true
@@ -1737,7 +1783,7 @@ static func get_sally_words_pool() -> Array:
 		return _sally_words_pool
 
 	# подставь свой путь, тот же файл, что и для enhance
-	var path := "res://data/sally_enhance.json"
+	var path := "res://Data/sally_enhance.json"
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f:
 		var txt := f.get_as_text()
@@ -2219,6 +2265,7 @@ func culling_spoiled_food() -> void:
 
 
 func _ready() -> void:
+	_build_path_index()
 	load_heroes("res://Data/characters.json")
 	load_items_db("res://Data/items.json") 
 	load_enemies_db("res://Data/enemies.json")

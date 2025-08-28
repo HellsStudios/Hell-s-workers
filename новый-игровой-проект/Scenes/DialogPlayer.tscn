@@ -9,6 +9,7 @@ font_size = 20
 z_index = 4000
 z_as_relative = false
 layout_mode = 3
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 script = ExtResource("1_ssh74")
@@ -34,12 +35,14 @@ color = Color(0, 0, 0, 0.0980392)
 
 [node name="Portraits" type="Control" parent="."]
 layout_mode = 1
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 
 [node name="LeftSlot" type="Control" parent="Portraits"]
 layout_mode = 1
+anchors_preset = 9
 anchor_bottom = 1.0
 offset_right = 600.0
 mouse_filter = 2
@@ -59,6 +62,7 @@ stretch_mode = 4
 
 [node name="RightSlot" type="Control" parent="Portraits"]
 layout_mode = 1
+anchors_preset = 11
 anchor_left = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -119,5 +123,6 @@ alignment = 1
 [node name="ClickCatcher" type="Control" parent="."]
 modulate = Color(1, 1, 1, 0)
 layout_mode = 1
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0

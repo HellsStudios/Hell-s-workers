@@ -502,6 +502,48 @@ func _resolve_portrait(side: Dictionary) -> String:
 	return ""
 
 func _apply_effects(e: Dictionary) -> void:
+	if e.has("battle"):
+		var b: Dictionary = e["battle"]
+		var enemies: Array = b.get("enemies", [])
+		var exit_scene := String(b.get("exit_scene",""))
+		# вернуться не туда, откуда пришли, а куда сказано
+		if exit_scene != "":
+			GameManager._return_scene_path = exit_scene
+		GameManager.push_battle(enemies)
+		return
+	if e.has("give_quest") or e.has("give_quests"):
+		var raw = (e.get("give_quests", null) if e.has("give_quests") else e["give_quest"])
+		var list: Array = []
+
+		match typeof(raw):
+			TYPE_STRING:
+				if String(raw) != "":
+					list.append(String(raw))
+			TYPE_ARRAY:
+				for q in (raw as Array):
+					if typeof(q) == TYPE_STRING and String(q) != "":
+						list.append(String(q))
+			TYPE_DICTIONARY:
+				# можно передать {"q_id": true, "q2": false}
+				for k in (raw as Dictionary).keys():
+					if bool(raw[k]):
+						list.append(String(k))
+
+		for qid in list:
+			# помечаем доступным в БД квестов…
+			GameManager.set_quest_available(qid, true)
+			# …и добавляем/обновляем карточку в журнале (она же спавнит таски)
+			var qdef: Dictionary = GameManager.quests_all.get(qid, {})
+			var qname := String(qdef.get("name", qid))
+			var qdesc := String(qdef.get("desc", ""))
+			GameManager.add_or_update_quest(qid, qname, qdesc, false)
+
+	# дальше — остальные эффекты как были
+	if e.has("add_condition"):
+		var cc: Dictionary = e["add_condition"]
+		for h in cc.keys():
+			for c in (cc[h] as Array):
+				GameManager.add_condition(String(h), String(c))
 	if e.has("mood"):
 		for h in (e["mood"] as Dictionary).keys():
 			GameManager.hero_mood[h] = int(GameManager.hero_mood.get(h,50)) + int(e["mood"][h])

@@ -16,7 +16,12 @@ var _event_seen: Dictionary = {}
 @onready var popup_buttons: VBoxContainer = $UI/EventPopup/Buttons
 var rows: Array[Node] = []
 var event_active: bool = false
-var running: bool = false
+var running: bool = false:
+	set(value):
+		if running == value: return
+		running = value
+		_apply_drag_lock()  # включаем/выключаем перетаскивание
+
 var current_slot: int = 0           # 0..47
 var slot_time_accum: float = 0.0
 var base_sec_per_slot: float = 0.7   # 1× скорость
@@ -206,7 +211,7 @@ func _go_mansion() -> void:
 	GameManager.reset_day_summary()
 	GameManager.mark_timeline_used()
 	GameManager.current_phase = 2  # вечер по условию
-	get_tree().change_scene_to_file("res://scenes/mansion.tscn")
+	get_tree().change_scene_to_file("res://Scenes/mansion.tscn")
 
 func _show_event(ev: Dictionary, hero: String, inst_id: int) -> void:
 	_popup_set_mode_event()
@@ -314,7 +319,7 @@ func _show_day_end_popup(sum: Dictionary) -> void:
 	b.pressed.connect(func():
 		popup.hide()
 		GameManager.reset_day_summary()
-		get_tree().change_scene_to_file("res://scenes/mansion.tscn")
+		get_tree().change_scene_to_file("res://Scenes/mansion.tscn")
 	, CONNECT_ONE_SHOT)
 	popup_buttons.add_child(b)
 	b.grab_focus()
@@ -444,6 +449,7 @@ func _ready() -> void:
 	_attach_rows_to_heroes()
 	_refresh_task_pool()
 	_redraw_schedule()
+	_reset_day()
 	speed_spin.min_value = 0.25
 	speed_spin.max_value = 4.0
 	speed_spin.step = 0.25
@@ -562,7 +568,7 @@ func _check_task_finishes(slot: int) -> void:
 			if slot >= st + dur and not bool(s.get("_done", false)):
 				var inst_id := int(s.get("inst_id",0))
 				s["_done"] = true   # чтобы не триггерить повторно на этом же кадре
-				GameManager.finish_task(hero, inst_id, true)  # успех/фэйлы — позже по логике
+				#GameManager.finish_task(hero, inst_id, true)  # успех/фэйлы — позже по логике
 
 
 func _on_task_started(hero: String, inst_id: int) -> void:
@@ -677,6 +683,32 @@ func _attach_rows_to_heroes() -> void:
 				(lbl as Label).text = ""
 
 
+
+func _apply_drag_lock() -> void:
+	# пул задач (слева)
+	for c in task_list.get_children():
+		if c == card_template: continue
+		if c is Control:
+			(c as Control).mouse_filter = (
+				Control.MOUSE_FILTER_IGNORE if running else Control.MOUSE_FILTER_STOP
+			)
+
+	# расписание на строках
+	for row in rows:
+		for cc in row.get_children():
+			if cc is Control:
+				if running:
+					(cc as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+				else:
+					# обычная логика: активные — игнор, остальным разрешаем
+					var start = int(cc.get("schedule_start_slot"))
+					var dur   = int(cc.get("duration_slots"))
+					var now   := current_slot
+					var active_task := (start >= 0 and now >= start and now < start + dur)
+					(cc as Control).mouse_filter = (
+						Control.MOUSE_FILTER_IGNORE if active_task else Control.MOUSE_FILTER_STOP
+					)
+
 func _refresh_task_pool() -> void:
 	# очистка визуала
 	for c in task_list.get_children():
@@ -700,7 +732,7 @@ func _refresh_task_pool() -> void:
 		
 		var node := card_template.duplicate() as ColorRect
 		node.visible = true
-
+		node.mouse_filter = (Control.MOUSE_FILTER_IGNORE if running else Control.MOUSE_FILTER_STOP)
 		# свойства скрипта карточки
 		node.tooltip_text = _task_tooltip(def)
 		node.set("duration_slots", int(def.get("duration_slots", 4)))
@@ -779,9 +811,11 @@ func _redraw_schedule() -> void:
 			var active_task := false
 			if now >= start and now < start + dur:
 				active_task = true
-
-			if active_task:
-				card.mouse_filter = Control.MOUSE_FILTER_IGNORE  # не получать мышь → DnD не стартует
-				card.modulate = Color(1, 1, 1, 0.9)              # лёгкий визуальный намёк (не обязательно)
+			if running:
+				card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			else:
-				card.mouse_filter = Control.MOUSE_FILTER_STOP
+				if active_task:
+					card.mouse_filter = Control.MOUSE_FILTER_IGNORE  # не получать мышь → DnD не стартует
+					card.modulate = Color(1, 1, 1, 0.9)              # лёгкий визуальный намёк (не обязательно)
+				else:
+					card.mouse_filter = Control.MOUSE_FILTER_STOP

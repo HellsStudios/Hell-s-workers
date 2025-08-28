@@ -5,7 +5,7 @@
 		"id": "char_berit",
 		"title": "Берит",
 		"text": "Суровый служака с печатью начальства.",
-		"image": "berit.png",
+		"image": "Berit.png",
 		"available": true
 	  }
 	],
@@ -14,7 +14,7 @@
 		"id": "loc_mansion",
 		"title": "Поместье",
 		"text": "База команды. Здесь все начинается.",
-		"image": "mansion.jpg",
+		"image": "loc_mansion.jpg",
 		"available": true
 	  }
 	]

@@ -1282,7 +1282,7 @@ func _perform_with_qte(user: Node2D, targets: Array[Node2D], ability: Dictionary
 						var mods := _query_incoming_mods(t)
 						var evade := float(mods.get("evade", 0.0))
 						var crit_mul := float(mods.get("crit_mult", 1.0))
-
+						print("[EVADE_CHANCE: ]",evade)
 						# эвейд
 						if randf() < evade:
 							_show_popup_number(t, 0, "miss", false)
@@ -4005,22 +4005,61 @@ func perform_action(user: Node2D, action: Dictionary) -> void:
 	_is_acting = false
 		
 func _query_incoming_mods(target: Node2D) -> Dictionary:
-	# стягиваем из системы эффектов персонажа, если она умеет вернуть
 	var evade := 0.0
 	var crit_mult := 1.0
+
 	if target != null and is_instance_valid(target):
+		var list: Array = []
+		# 1) предпочитаем list_effects(), если есть
 		if target.has_method("list_effects"):
-			for ex in target.call("list_effects"):
-				if typeof(ex) == TYPE_DICTIONARY:
-					evade     += float(ex.get("evade_chance", 0.0))
-					crit_mult *= float(ex.get("crit_taken_mult", 1.0))
-		elif target.has_method("get_effect"):
-			# минимальная совместимость по id
-			var ex = target.call("get_effect", "squirrel_dodge")
-			if typeof(ex) == TYPE_DICTIONARY:
-				evade     += float(ex.get("evade_chance", 0.0))
-				crit_mult *= float(ex.get("crit_taken_mult", 1.0))
-	return {"evade": clamp(evade, 0.0, 0.9), "crit_mult": max(1.0, crit_mult)}
+			list = target.call("list_effects")
+		# 2) запасной вариант — прямое поле effects
+		elif "effects" in target:
+			list = target.effects
+
+		# разбор каждого эффекта
+		for ex in list:
+			var d: Dictionary = {}
+			match typeof(ex):
+				TYPE_DICTIONARY:
+					d = ex
+				TYPE_STRING:
+					# если вернули id — поднять прототип из БД эффектов
+					d = GameManager.get_effect_proto(String(ex))
+				_:
+					# поддержка редких случаев: объект с to_dict()
+					if ex is Object and ex.has_method("to_dict"):
+						d = ex.to_dict()
+
+			if d.is_empty():
+				continue
+
+			# многие эффекты у тебя в формате { name, is_buff, mods:{...} }
+			var mods: Dictionary = d.get("mods", d)
+			var e_add := float(mods.get("evade_chance", 0.0))
+			var c_mul := float(mods.get("crit_taken_mult", 1.0))
+
+			if e_add != 0.0 or c_mul != 1.0:
+				print("[EFFECT MOD] id=", String(d.get("id","?")),
+					" ev+=", e_add, " critx=", c_mul)
+
+			evade += e_add
+			crit_mult *= c_mul
+
+		# Если лист вернул ноль, а у узла есть точечный get_effect — поддержим и его
+		if evade == 0.0 and target.has_method("get_effect"):
+			var one = target.call("get_effect", "squirrel_dodge")
+			if typeof(one) == TYPE_DICTIONARY:
+				var m: Dictionary = one.get("mods", one)
+				evade     += float(m.get("evade_chance", 0.0))
+				crit_mult *= float(m.get("crit_taken_mult", 1.0))
+
+	# хардкэп, чтобы не уезжать в 100%
+	evade = clampf(evade, 0.0, 0.95)
+	crit_mult = max(1.0, crit_mult)
+
+	print("[INCOMING MODS] evade=", evade, " crit_mult=", crit_mult)
+	return {"evade": evade, "crit_mult": crit_mult}
 
 func _show_popup_number(target: Node2D, amount: int, kind: String = "dmg", is_crit := false) -> void:
 	if world_ui == null or not is_instance_valid(target): return

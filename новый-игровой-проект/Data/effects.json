@@ -5,7 +5,7 @@
 	"def_up":      { "name": "Защита +",     "is_buff": true,  "mods": { "defense": 5 } },
 	"barrier":     { "name": "Барьер",       "is_buff": true,  "mods": { "defense": 8 } },
 	"disorient":   { "name": "Дезориентация","is_buff": false, "mods": { "speed": -2 } },
-	"squirrel_dodge": { "name": "Сбитый прицел", "is_buff": true, "mods": { "evade_chance": 0.20, "crit_taken_mult": 1.5 } },
+	"squirrel_dodge": { "name": "Сбитый прицел", "is_buff": true, "mods": { "evade_chance": 0.50, "crit_taken_mult": 1.5 } },
 	"hypnosis":    { "name": "Гипноз",       "is_buff": false, "mods": { "stun": true }},
 	"stun":    { "name": "Оглушение",       "is_buff": false, "mods": { "stun": true } },
 	"sated":       { "name": "Сытость",      "is_buff": true,  "mods": { "defense": 6, "regen": 5 }, "permanent": true },
