@@ -117,7 +117,7 @@ var timeline_ref: Node = null
 var battle_ref: Node = null
 var _return_scene_path := ""                  # куда вернуться после боя
 const TIMELINE_SCENE := "res://Scenes/timeline.tscn"  # свой путь
-const BATTLE_SCENE   := "res://Scenes/battle.tscn"    # свой путь
+const BATTLE_SCENE   := "res://Scenes/Battle.tscn"    # свой путь
 
 var _battle_payload: Dictionary = {}          # {party:Array, enemies:Array}
 
