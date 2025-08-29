@@ -121,9 +121,23 @@ func _ready() -> void:
 		end_day_confirm.dialog_text = "Перейти к следующему дню?"
 		add_child(end_day_confirm)
 	end_day_confirm.confirmed.connect(_on_end_day_confirmed)
+	if end_day_confirm.has_signal("canceled") and not end_day_confirm.canceled.is_connected(_on_end_day_closed):
+		end_day_confirm.canceled.connect(_on_end_day_closed)
+	if not end_day_confirm.close_requested.is_connected(_on_end_day_closed):
+		end_day_confirm.close_requested.connect(_on_end_day_closed)
+	# на всякий, если есть popup_hide в твоей версии:
+	if end_day_confirm.has_signal("popup_hide") and not end_day_confirm.popup_hide.is_connected(_on_end_day_closed):
+		end_day_confirm.popup_hide.connect(_on_end_day_closed)
+
+func _on_end_day_closed() -> void:
+	_fix_stuck_mouse()
+	# вернуть управление камерой
+	if cam:
+		cam.cancel_drag()
+		cam.set_drag_enabled(true)
 
 func _on_end_day_confirmed() -> void:
-	var candidate := "d_end_of_day_%d" % GameManager.day     # например: d_end_of_day_1, _2, ...
+	var candidate := "d_end_of_day_%d" % GameManager.day
 	var dlg_id := (candidate if GameManager.dialog_exists(candidate) else "d_end_of_day")
 
 	if GameManager.has_signal("dialog_finished"):
@@ -131,10 +145,18 @@ func _on_end_day_confirmed() -> void:
 			if id == dlg_id:
 				_finish_day_flow()
 				_fix_stuck_mouse()
+				# ← ВОТ ЭТО ВЕРНЁТ СКРОЛЛ ПОСЛЕ ПОДТВЕРЖДЕНИЯ
+				if cam:
+					cam.cancel_drag()
+					cam.set_drag_enabled(true)
 		, CONNECT_ONE_SHOT)
 	else:
 		_finish_day_flow()
 		_fix_stuck_mouse()
+		if cam:
+			cam.cancel_drag()
+			cam.set_drag_enabled(true)
+
 	GameManager.play_dialog(dlg_id, self)
 
 
@@ -147,22 +169,23 @@ func _finish_day_flow() -> void:
 	_apply_phase_visuals()
 
 func _fix_stuck_mouse() -> void:
-	# 1) «съесть» текущий ввод и отпустить фокус
 	var vp := get_viewport()
 	if vp:
 		vp.set_input_as_handled()
 		vp.gui_release_focus()
+	if cam:
+		cam.cancel_drag()
 
-	# 2) дождаться следующего кадра, чтобы UI успел скрыться
-	await get_tree().process_frame
+	await get_tree().process_frame  # дождаться, пока окно реально спрячется
 
-	# 3) вручную отправить всем «отпускание ЛКМ»,
-	#    чтобы камера получила корректное состояние
-	var ev := InputEventMouseButton.new()
-	ev.button_index = MOUSE_BUTTON_LEFT
-	ev.pressed = false
-	ev.position = vp.get_mouse_position() if vp else Vector2.ZERO
-	Input.parse_input_event(ev)
+	var pos := (vp.get_mouse_position() if vp else Vector2.ZERO)
+	for b in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = b
+		ev.pressed = false
+		ev.position = pos
+		Input.parse_input_event(ev)
+
 
 
 func _apply_phase_visuals() -> void:
@@ -209,6 +232,10 @@ func _on_room_3_input_event(viewport: Node, event: InputEvent, shape_idx: int) -
 			# Если уже вечер/ночь или таймлайн пройден — можно завершать день
 			end_day_confirm.dialog_text = "Закончить день и перейти к утру?"
 			end_day_confirm.popup_centered_ratio(0.25)
+			if cam:
+				cam.cancel_drag()
+				cam.set_drag_enabled(false)
+			_start_input_quarantine(0.25) 
 
 func _release_mouse_buttons() -> void:
 	var pos := get_viewport().get_mouse_position()
