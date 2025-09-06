@@ -21,7 +21,9 @@ var running: bool = false:
 		if running == value: return
 		running = value
 		_apply_drag_lock()  # включаем/выключаем перетаскивание
-
+var _popup_queue: Array = []   # [{"kind":"event"/"finish"/"day_end", ...}]
+var _popup_busy: bool = false
+var _popup_mode := PopupMode.NONE
 var current_slot: int = 0           # 0..47
 var slot_time_accum: float = 0.0
 var base_sec_per_slot: float = 0.7   # 1× скорость
@@ -30,13 +32,11 @@ var sec_per_slot: float = 0.7
 var day_end_shown: bool = false
 const TOTAL_SLOTS := 48
 var _scene_switching := false
-var _popup_queue: Array = []      # [{kind:"event"/"finish"/"day_end", ...}]
-var _popup_busy: bool = false
 
 var _event_queue: Array = []            # [{ev, hero, inst}]
 
 enum PopupMode { NONE, EVENT, INFO }
-var _popup_mode : int = PopupMode.NONE
+
 
 var _pause_stack := 0
 
@@ -90,6 +90,7 @@ func _show_finish_popup(hero: String, inst_id: int, success: bool, rewards: Dict
 	# один раз на «Ок»
 	popup.confirmed.connect(func():
 		popup.hide()
+		_popups_continue_or_resume()
 		pop_pause()
 		_popup_busy = false
 		_show_next_popup()
@@ -179,20 +180,19 @@ func _queue_day_end(sum: Dictionary) -> void:
 	_try_show_popup()
 
 func _try_show_popup() -> void:
-	if _popup_busy: return
-	if _popup_queue.is_empty(): return
+	if _popup_busy or _popup_queue.is_empty(): return
 	_popup_busy = true
 	var req: Dictionary = _popup_queue.pop_front()
-	var kind := String(req.get("kind",""))
-	match kind:
+	match String(req.get("kind","")):
 		"event":
-			_show_event(req["ev"], String(req["hero"]), int(req["inst"]))   # ← твоя рабочая функция
+			_show_event(req["ev"], String(req["hero"]), int(req["inst"]))
 		"finish":
 			_show_finish_popup(String(req["hero"]), int(req["inst"]), bool(req["success"]), req.get("rewards", {}))
 		"day_end":
 			_show_day_end_popup(req.get("sum", {}))
 		_:
 			_popup_busy = false
+
 
 func _popups_continue_or_resume() -> void:
 	# Вызывай это после закрытия ЛЮБОГО окна
@@ -249,7 +249,7 @@ func _on_event_option_chosen(hero: String, inst_id: int, ev: Dictionary, opt: Di
 	GameManager._resolve_event_option(hero, inst_id, ev, opt)
 	event_active = false
 	_popup_busy = false
-	running = true
+	_popups_continue_or_resume()
 	_show_next_popup()
 
 
@@ -266,9 +266,6 @@ func _drain_event_queue() -> void:
 
 
 func _on_task_event(hero: String, inst_id: int, ev: Dictionary) -> void:
-	print("[UI] task_event hero=%s inst=%d text=%s" % [hero, inst_id, String(ev.get("text",""))])
-
-	# анти-дубль
 	var st := _find_start_slot(hero, inst_id)
 	var key := _event_key(st, ev)
 	var bucket: Dictionary = _event_seen.get(inst_id, {})
@@ -277,13 +274,9 @@ func _on_task_event(hero: String, inst_id: int, ev: Dictionary) -> void:
 	bucket[key] = true
 	_event_seen[inst_id] = bucket
 
-	# если заняты — ставим в очередь
-	if event_active || popup.visible || _popup_busy:
-		_queue_event(ev, hero, inst_id)
-		return
+	_popup_queue.append({"kind":"event","ev":ev,"hero":hero,"inst":inst_id})
+	_try_show_popup()
 
-	_popup_busy = true
-	_show_event(ev, hero, inst_id)
 
 
 func _show_day_end_popup(sum: Dictionary) -> void:
@@ -318,8 +311,9 @@ func _show_day_end_popup(sum: Dictionary) -> void:
 	b.focus_mode = Control.FOCUS_ALL
 	b.pressed.connect(func():
 		popup.hide()
+		_popups_continue_or_resume()
 		GameManager.reset_day_summary()
-		get_tree().change_scene_to_file("res://Scenes/mansion.tscn")
+		_go_mansion()
 	, CONNECT_ONE_SHOT)
 	popup_buttons.add_child(b)
 	b.grab_focus()
@@ -335,34 +329,10 @@ func _show_day_end_popup(sum: Dictionary) -> void:
 
 func _on_day_end() -> void:
 	running = false
-	event_active = true  # блокируем инпут таймлайна, пока окно открыто
-	_event_queue.clear()
-	var sum := GameManager.get_day_summary()
-	popup.title = "День завершён"
-	popup_text.bbcode_enabled = true
-	popup_text.text = _format_day_summary(sum)
+	event_active = true
+	_popup_queue.append({"kind":"day_end","sum": GameManager.get_day_summary()})
+	_try_show_popup()
 
-	# 1) никаких кастом-кнопок
-	for c in popup_buttons.get_children():
-		c.queue_free()
-	popup_buttons.visible = false
-
-	# 2) используем встроенную ОК
-	popup.dialog_hide_on_ok = true
-	var ok_btn := popup.get_ok_button()
-	if ok_btn:
-		ok_btn.visible = true
-		ok_btn.disabled = false
-		ok_btn.text = "В особняк"
-
-	# 3) не копим повторные подключения
-	if popup.confirmed.is_connected(_go_mansion):
-		popup.confirmed.disconnect(_go_mansion)
-	popup.confirmed.connect(_go_mansion, CONNECT_ONE_SHOT)
-
-	popup.exclusive = true
-	popup.popup_centered()
-	popup.grab_focus()
 
 func _fmt_items(arr: Array) -> String:
 	var parts: Array[String] = []
@@ -443,19 +413,40 @@ func _reset_day() -> void:
 func _on_speed_changed(v: float) -> void:
 	speed_mult = max(0.01, v)
 	sec_per_slot = base_sec_per_slot / speed_mult
+	
+func pause_clock_state() -> Dictionary:
+	return {
+		"slot": current_slot,
+		"running": running,
+		"slot_sec": base_sec_per_slot
+	}
 
 func _ready() -> void:
+	PauseManager.set_mode(Pause.Mode.TIMELINE)
+	#current_slot = 0
+	#slot_time_accum = 0.0
+	_set_pointer_x()
 	_build_rows_from_scene()
 	_attach_rows_to_heroes()
 	_refresh_task_pool()
 	_redraw_schedule()
-	_reset_day()
+	var restoring := GameManager.timeline_clock.has("slot")
+	if not restoring:
+		_reset_day()
+	current_slot     = int(GameManager.timeline_clock.get("slot", 0))
+	base_sec_per_slot = float(GameManager.timeline_clock.get("slot_sec", 0.7))
+	sec_per_slot      = base_sec_per_slot / max(0.01, float(speed_spin.value))
+	running           = bool(GameManager.timeline_clock.get("running", false))
 	speed_spin.min_value = 0.25
 	speed_spin.max_value = 4.0
 	speed_spin.step = 0.25
 	speed_spin.value = 1.0
 	speed_spin.value_changed.connect(_on_speed_changed)
 	_on_speed_changed(speed_spin.value)
+	if time_area and not time_area.resized.is_connected(_sync_pointer_rect):
+		time_area.resized.connect(_sync_pointer_rect)
+	# ещё хорошо слушать ресайз вьюпорта:
+	get_viewport().size_changed.connect(func(): _sync_pointer_rect(); _set_pointer_x())
 
 	# реакция на изменения пула/расписания от GM
 	if GameManager.has_signal("task_pool_changed"):
@@ -471,8 +462,10 @@ func _ready() -> void:
 	running = bool(GameManager.timeline_clock.get("running", false))
 	
 		# --- POINTER init ---
+	await get_tree().process_frame
+	await get_tree().process_frame
 	_sync_pointer_rect()
-	_set_pointer_x() #сомнительно
+	_set_pointer_x()
 
 	if play_btn and not play_btn.pressed.is_connected(_start):
 		play_btn.pressed.connect(_start)
@@ -534,26 +527,12 @@ func _advance_one_slot() -> void:
 		return
 	# события в слоте ...
 	_check_task_finishes(current_slot)
+	
 func _on_task_finished(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
-	# UI убирается сам через _redraw_schedule() от schedule_changed
-	print("[UI] task_finished hero=", hero, " inst=", inst_id, " success=", success, " rewards=", rewards)
-	_clear_event_buttons()  # ← ВАЖНО: очистить старые опции события
+	_clear_event_buttons()
 	_redraw_schedule()
-	_queue_finish(hero, inst_id, success, rewards)
-	_show_next_popup()
-	var k := int(rewards.get("krestli",0))
-	var title := ""
-	# находим деф для текста
-	for s in GameManager.scheduled.get(hero, []):
-		if int(s.get("inst_id",0)) == inst_id:
-			title = String(GameManager.task_defs.get(s.get("def_id",""), {}).get("title",""))
-			break
-	if title == "":
-		# можно достать из пула по def_id инстанса, если хранишь
-		pass
-
-
-		# этот инстанс завершён — все отметки его событий можно забыть
+	_popup_queue.append({"kind":"finish","hero":hero,"inst":inst_id,"success":success,"rewards":rewards})
+	_try_show_popup()
 	_event_seen.erase(inst_id)
 
 

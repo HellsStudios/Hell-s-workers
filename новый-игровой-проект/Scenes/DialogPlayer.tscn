@@ -1,6 +1,80 @@
-[gd_scene load_steps=3 format=3 uid="uid://bs21vxr7b4o8p"]
+[gd_scene load_steps=9 format=3 uid="uid://bs21vxr7b4o8p"]
 
 [ext_resource type="Script" uid="uid://bv3layd2t3gbm" path="res://Scenes/dialog_player.gd" id="1_ssh74"]
+
+[sub_resource type="Animation" id="Animation_ssh74"]
+resource_name = "idle"
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:scale")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [Vector2(1, 1), Vector2(0.95, 0.85), Vector2(1, 1)]
+}
+
+[sub_resource type="Animation" id="Animation_8n1e6"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:scale")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(1, 1)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_387an"]
+_data = {
+&"RESET": SubResource("Animation_8n1e6"),
+&"idle": SubResource("Animation_ssh74")
+}
+
+[sub_resource type="Animation" id="Animation_o5bkl"]
+resource_name = "idle"
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:scale")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [Vector2(1, 1), Vector2(0.95, 0.85), Vector2(1, 1)]
+}
+
+[sub_resource type="Animation" id="Animation_icapw"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:scale")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(1, 1)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_v0yej"]
+_data = {
+&"RESET": SubResource("Animation_icapw"),
+&"idle": SubResource("Animation_o5bkl")
+}
 
 [sub_resource type="LabelSettings" id="LabelSettings_ssh74"]
 font_size = 20
@@ -60,6 +134,11 @@ stretch_mode = 4
 
 [node name="PunchSfx" type="AudioStreamPlayer2D" parent="Portraits/LeftSlot"]
 
+[node name="AnimationPlayer" type="AnimationPlayer" parent="Portraits/LeftSlot"]
+libraries = {
+&"": SubResource("AnimationLibrary_387an")
+}
+
 [node name="RightSlot" type="Control" parent="Portraits"]
 layout_mode = 1
 anchors_preset = 11
@@ -81,6 +160,11 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="PunchSfx" type="AudioStreamPlayer2D" parent="Portraits/RightSlot"]
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="Portraits/RightSlot"]
+libraries = {
+&"": SubResource("AnimationLibrary_v0yej")
+}
 
 [node name="Bottom" type="Panel" parent="."]
 layout_mode = 1

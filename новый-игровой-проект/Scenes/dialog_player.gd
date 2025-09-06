@@ -2,14 +2,15 @@ extends Control
 class_name DialogPlayer
 
 # ── настройка ──────────────────────────────────────────────────────────
-const PORTRAIT_SCALE := 0.33          # портреты в 3 раза меньше
+const PORTRAIT_SCALE := 0.5          # портреты в 3 раза меньше
 const TYPE_SPEED     := 45.0          # печать: символов в секунду
 const DIALOGS_JSON   := "res://Data/dialogs.json"
 const PORTRAIT_FMT   := "res://Assets/portraits/{char}/{pose}.png"  # базовый шаблон
-const DEFAULT_PORTRAIT_SCALE := 0.4     # дефолтный масштаб (≈ в 4.2 раза меньше исходника)
+const DEFAULT_PORTRAIT_SCALE := 0.5     # дефолтный масштаб (≈ в 4.2 раза меньше исходника)
 const DEFAULT_OFF_BOTTOM      := 280.0     # отступ от низа (px)
 const DEFAULT_OFF_CENTER      := 80.0    # расстояние от вертикального центра (px)
-
+# Dialog.gd (корень сцены — Control)
+const REF = Vector2(1920, 1080)  # референсный макет
 # ── лог ────────────────────────────────────────────────────────────────
 func _log(msg: String, ctx: Dictionary = {}) -> void:
 	print("[Dialog] ", msg, " | ", ctx)
@@ -54,6 +55,9 @@ var _next_id := ""            # куда идти после текущей ре
 # ── lifecycle ──────────────────────────────────────────────────────────
 func _ready() -> void:
 	# всегда поверх
+	PauseManager.set_mode(Pause.Mode.GENERIC)
+	get_viewport().size_changed.connect(_relayout_dialog)
+	_relayout_dialog()
 	set_as_top_level(true)
 	anchor_left = 0; anchor_top = 0; anchor_right = 1; anchor_bottom = 1
 	offset_left = 0; offset_top = 0; offset_right = 0; offset_bottom = 0
@@ -111,6 +115,33 @@ func _on_click_gui_input(event: InputEvent) -> void:
 
 	_log("click -> next_requested emit")
 	next_requested.emit()
+
+func _set_layout_scale(tr: TextureRect, k: float) -> void:
+	tr.set_meta("layout_scale", Vector2.ONE * k)
+	var dimmed := bool(tr.get_meta("dimmed", false))
+	tr.scale = (tr.get_meta("layout_scale") as Vector2) * (0.95 if dimmed else 1.0)
+
+func _relayout_dialog():
+	var v := get_viewport_rect().size
+	var ref_aspect := REF.x / REF.y          # 16:9
+	var safe_w = min(v.x, v.y * ref_aspect) # «коробка» 16:9
+	var side_pad = max(32.0, (v.x - safe_w) * 0.5 + 24.0) # отступы от реальных краёв
+
+	# Масштаб портретов относительно высоты
+	var k = clamp(v.y / REF.y, 0.75, 1.35)
+	_set_layout_scale(left_por,  k)
+	_set_layout_scale(right_por, k)
+
+	# Позиции: слева/справа с одинаковыми отступами
+	var lp_size := left_por.size * left_por.scale
+	var rp_size := right_por.size * right_por.scale
+	left_por.position  = Vector2(side_pad, v.y - lp_size.y)           # левый вниз
+	right_por.position = Vector2(v.x - side_pad - rp_size.x, v.y - rp_size.y)
+
+	# Текст центрируем по реальной ширине, но ограничиваем «коробкой»
+	if is_instance_valid(text_lbl):
+		text_lbl.position.x = (v.x - safe_w) * 0.5
+		text_lbl.size.x     = safe_w
 
 func _unhandled_input(event: InputEvent) -> void:
 	# резервный путь, если ClickCatcher вдруг не ловит
@@ -172,13 +203,13 @@ func _slot_apply(side: String, src_path: String, dim: bool) -> void:
 		var sz := tex.get_size() * DEFAULT_PORTRAIT_SCALE
 		tr.custom_minimum_size = sz
 		tr.size = sz
-		tr.pivot_offset = sz * 0.5
+		tr.pivot_offset = Vector2(sz.x * 0.5, sz.y)  # нижний центр вместо центра
 
 	_set_dim(tr, bool(dim))
 
 	# важно: раскладку делаем после того, как нода получила size
 	call_deferred("_layout_portraits")
-
+	_restart_idle(tr)  # добавь
 
 func _layout_portraits() -> void:
 	# узлы могут быть ещё не готовы/освобождены
@@ -213,29 +244,67 @@ func _notification(what):
 	if what == NOTIFICATION_RESIZED:
 		call_deferred("_layout_portraits")
 
+var _idle_tw := {}   # TextureRect -> Tween
+var _punch_tw := {}  # TextureRect -> Tween
+
+func _restart_idle(tr: TextureRect) -> void:
+	if _idle_tw.has(tr) and _idle_tw[tr]:
+		(_idle_tw[tr] as Tween).kill()
+	_idle_tw.erase(tr)
+
+	var base: Vector2 = (tr.get_meta("layout_scale", tr.scale) as Vector2)
+	var t = create_tween().set_loops()
+	_idle_tw[tr] = t
+	# лёгкое покачивание: масштаб только по Y, чтобы нижний край оставался “на полу”
+	t.tween_property(tr, "scale", base * Vector2(1.0, 0.99), 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	t.tween_property(tr, "scale", base * Vector2(1.0, 1.00), 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+func _bounce(tr: TextureRect) -> void:
+	if _punch_tw.has(tr) and _punch_tw[tr]:
+		(_punch_tw[tr] as Tween).kill()
+
+	var base: Vector2 = tr.scale  # текущий (с учётом димминга/лейаута)
+
+	var t = create_tween()
+	_punch_tw[tr] = t
+	# squash вниз (якорь снизу => выглядит как пружина)
+	t.tween_property(tr, "scale", base * Vector2(1.06, 0.92), 0.07).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# затем небольшая растяжка вверх
+	t.tween_property(tr, "scale", base * Vector2(0.98, 1.05), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# возвращаемся в базу
+	t.tween_property(tr, "scale", base, 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+
+func _active_side_from_dim(l_dim: bool, r_dim: bool, fallback := "left") -> String:
+	if l_dim and not r_dim: return "right"
+	if r_dim and not l_dim: return "left"
+	return fallback
 
 func _set_dim(tr: TextureRect, on: bool) -> void:
+	tr.set_meta("dimmed", on)
+
+	var base: Vector2 = (tr.get_meta("layout_scale", tr.scale) as Vector2)
+	var target_scale := base * (0.95 if on else 1.0)
+
+	# яркость: 1.0 — норм, 0.45 — затемнён
+	var target_color := (Color(0.45, 0.45, 0.45, 1.0) if on else  Color(1, 1, 1, 1))
+
 	var tw = create_tween()
-	tw.tween_property(tr, "modulate:a", (0.55 if on else 1.0), 0.15)
-	tw.parallel().tween_property(tr, "scale", (Vector2(0.95,0.95) if on else Vector2.ONE), 0.15)
+	tw.tween_property(tr, "modulate", target_color, 0.15)
+	tw.parallel().tween_property(tr, "scale", target_scale, 0.15)
+
+	_restart_idle(tr)  # чтобы «дыхание» продолжалось с новой базой
 
 func _emphasize(side: String, sfx_path := "") -> void:
-	var tr: TextureRect = (left_por if side == "left" else right_por)
-	var punch: AudioStreamPlayer2D = (left_punch if side == "left" else right_punch)
+	var tr: TextureRect = ( left_por  if side == "left" else right_por)
+	var punch: AudioStreamPlayer2D = ( left_punch if side == "left" else right_punch)
 
 	if sfx_path != "" and ResourceLoader.exists(sfx_path):
 		punch.stream = load(sfx_path)
 	if punch.stream:
 		punch.play()
 
-	var tw = create_tween()
-	tw.tween_property(tr, "position:y", -6, 0.06).as_relative()
-	tw.tween_property(tr, "position:y", +6, 0.06).as_relative()
+	_bounce(tr)  # только разовый bounce
 
-	# лёгкое «дыхание»
-	var loop = create_tween().set_loops()
-	loop.tween_property(tr, "position:y", -2, 0.6).as_relative()
-	loop.tween_property(tr, "position:y", +2, 0.6).as_relative()
 
 const DBG_LAYOUT := true
 
@@ -329,19 +398,27 @@ func show_line(args: Dictionary) -> void:
 
 	name_lbl.text = String(args.get("speaker", ""))
 
-	var l = args.get("left", {})
-	var r = args.get("right", {})
-	_slot_apply("left",  String(l.get("src","")),  bool(l.get("dim", false)))
-	_slot_apply("right", String(r.get("src","")),  bool(r.get("dim", false)))
+	var L: Dictionary = args.get("left", {})
+	var R: Dictionary = args.get("right", {})
 
-	_layout_portraits()            # <-- вот это
-	_dump_layout("after_layout")
-	_emphasize(String(args.get("active_side","left")), String(args.get("sfx","")))
+	# применяем портреты и dim
+	_slot_apply("left",  String(L.get("src","")),  bool(L.get("dim", false)))
+	_slot_apply("right", String(R.get("src","")),  bool(R.get("dim", false)))
+
+	_layout_portraits()
+
+	# запустить «дыхание» у обоих
+	_restart_idle(left_por)
+	_restart_idle(right_por)
+
+	# определить, кто активен: тот, кто НЕ dim
+	var hinted := String(args.get("active_side","left"))
+	var active := _active_side_from_dim(bool(L.get("dim",false)), bool(R.get("dim",false)), hinted)
+
+	_emphasize(active, String(args.get("sfx","")))
 	_start_typewriter(String(args.get("text","")))
 
-	_emphasize(String(args.get("active_side","left")), String(args.get("sfx","")))
-	_start_typewriter(String(args.get("text","")))
-	_log("show_line", {"speaker": name_lbl.text})
+
 
 func show_choices(prompt: String, options: Array) -> void:
 	click_catcher.mouse_filter = Control.MOUSE_FILTER_IGNORE

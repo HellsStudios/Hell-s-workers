@@ -5,6 +5,25 @@ const DBG := true
 func _dbg(msg: String) -> void:
 	if DBG: print("[MGMT][DBG] ", msg)
 
+@onready var kitchen_tab: Control = $MarginContainer/VBoxContainer/Tabs/KitchenTab
+
+
+func open_cooking_tab() -> void:
+	popup_centered_ratio(0.7)
+
+	# Переключаемся по самому контролу (не по названию вкладки)
+	if tabs and kitchen_tab:
+		var idx := tabs.get_tab_idx_from_control(kitchen_tab)
+		if idx >= 0:
+			tabs.current_tab = idx
+
+	# Гарантированно освежаем UI вкладки
+	if kitchen_tab:
+		kitchen_tab.call_deferred("refresh_all")     # ← добавить в скрипт вкладки
+		kitchen_tab.call_deferred("focus_default")   # ← добавить в скрипт вкладки
+
+
+
 func _refresh_archive() -> void:
 	if archive_cats:
 		archive_cats.clear()
@@ -295,6 +314,9 @@ func _ready() -> void:
 
 	if not hero_list.item_selected.is_connected(_on_hero_item_selected):
 		hero_list.item_selected.connect(_on_hero_item_selected); _dbg("connect hero_list.item_selected")
+	
+	if kitchen_tab and kitchen_tab.has_method("set_embedded"):
+		kitchen_tab.call("set_embedded", true)  # включаем встроенный режим, чтоб не пряталась
 
 	# сигналы от GM
 	if GameManager.has_signal("quests_changed") and not GameManager.quests_changed.is_connected(_refresh_quests):
@@ -438,7 +460,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func open_centered() -> void:
 	show()
 	await get_tree().process_frame
-	var vr := Vector2i(1600, 900)
+	var vr := Vector2i(1920, 1080)
 	position = Vector2i((vr.x - size.x) / 2, (vr.y - size.y) / 2)
 	grab_focus()
 

@@ -16,11 +16,11 @@ script = ExtResource("1_mu3jt")
 [node name="UI" type="CanvasLayer" parent="."]
 
 [node name="MainLayout" type="HBoxContainer" parent="UI"]
-offset_right = 1152.0
-offset_bottom = 648.0
+offset_right = 1920.0
+offset_bottom = 1080.0
 
 [node name="TaskPoolPanel" type="PanelContainer" parent="UI/MainLayout"]
-custom_minimum_size = Vector2(300, 900)
+custom_minimum_size = Vector2(300, 1080)
 layout_mode = 2
 size_flags_vertical = 0
 
@@ -64,18 +64,18 @@ unique_name_in_owner = true
 layout_mode = 2
 offset_left = 56.0
 offset_right = 58.0
-offset_bottom = 900.0
+offset_bottom = 1000.0
 
 [node name="HBoxContainer" type="HBoxContainer" parent="UI/MainLayout/Control"]
 layout_mode = 2
 offset_left = 4.0
-offset_right = 4.0
-offset_bottom = 900.0
+offset_right = 1258.0
+offset_bottom = 1010.0
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UI/MainLayout/Control/HBoxContainer"]
 custom_minimum_size = Vector2(50, 648)
 layout_mode = 2
-theme_override_constants/separation = 75
+theme_override_constants/separation = 100
 
 [node name="Time" type="Label" parent="UI/MainLayout/Control/HBoxContainer/VBoxContainer"]
 custom_minimum_size = Vector2(0, 30)
@@ -121,7 +121,7 @@ text = "Chars"
 [node name="TimeLineArea" type="VBoxContainer" parent="UI/MainLayout/Control/HBoxContainer"]
 custom_minimum_size = Vector2(1200, 648)
 layout_mode = 2
-theme_override_constants/separation = 75
+theme_override_constants/separation = 100
 
 [node name="TimeLineHeader" type="ColorRect" parent="UI/MainLayout/Control/HBoxContainer/TimeLineArea"]
 custom_minimum_size = Vector2(1200, 30)

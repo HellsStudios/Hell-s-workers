@@ -12,7 +12,7 @@ script = ExtResource("1_vr6xi")
 [node name="Battlefield" type="Node2D" parent="."]
 
 [node name="HeroPositions" type="Node2D" parent="Battlefield"]
-position = Vector2(200, 130)
+position = Vector2(300, 250)
 scale = Vector2(2, 3.5)
 
 [node name="Slot1" type="Marker2D" parent="Battlefield/HeroPositions"]
@@ -27,7 +27,7 @@ position = Vector2(0, 160)
 scale = Vector2(0.75, 0.4)
 
 [node name="EnemyPositions" type="Node2D" parent="Battlefield"]
-position = Vector2(1400, 130)
+position = Vector2(1620, 250)
 scale = Vector2(2, 3.5)
 
 [node name="Slot1" type="Marker2D" parent="Battlefield/EnemyPositions"]
