@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://c2v8aapr24i5t"
+path="res://.godot/imported/Dante System overload—now.ogg-906e403595b01140aeed4fa2650e2ba3.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Dante System overload—now.ogg"
+dest_files=["res://.godot/imported/Dante System overload—now.ogg-906e403595b01140aeed4fa2650e2ba3.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

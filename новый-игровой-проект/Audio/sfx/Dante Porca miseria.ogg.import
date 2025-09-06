@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dllfeemno2ub8"
+path="res://.godot/imported/Dante Porca miseria.ogg-d1309dba56cad86cdce4768d5fa28d2c.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Dante Porca miseria.ogg"
+dest_files=["res://.godot/imported/Dante Porca miseria.ogg-d1309dba56cad86cdce4768d5fa28d2c.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

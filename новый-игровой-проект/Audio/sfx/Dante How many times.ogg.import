@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://4ojf072c4km8"
+path="res://.godot/imported/Dante How many times.ogg-91c8a63cb81e6bf08c7c0d75a2783f4e.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Dante How many times.ogg"
+dest_files=["res://.godot/imported/Dante How many times.ogg-91c8a63cb81e6bf08c7c0d75a2783f4e.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

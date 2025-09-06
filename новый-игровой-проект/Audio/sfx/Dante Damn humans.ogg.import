@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cvhchpxph5nlj"
+path="res://.godot/imported/Dante Damn humans.ogg-e7e57cf2bafced565f6deefd10e7ac4e.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Dante Damn humans.ogg"
+dest_files=["res://.godot/imported/Dante Damn humans.ogg-e7e57cf2bafced565f6deefd10e7ac4e.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

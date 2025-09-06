@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cpx3imbt7qsx"
+path="res://.godot/imported/Dante Vaffanculo.ogg-71278f42ed9de2ec3009c55907045070.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Dante Vaffanculo.ogg"
+dest_files=["res://.godot/imported/Dante Vaffanculo.ogg-71278f42ed9de2ec3009c55907045070.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://5s0m0508n4m1"
+path="res://.godot/imported/Dante Mamma mia.ogg-e7ef2f59de40ed8adef4a29763f0ecd3.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Dante Mamma mia.ogg"
+dest_files=["res://.godot/imported/Dante Mamma mia.ogg-e7ef2f59de40ed8adef4a29763f0ecd3.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

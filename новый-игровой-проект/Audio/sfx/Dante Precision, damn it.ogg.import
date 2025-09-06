@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://ce3a8setj5hgc"
+path="res://.godot/imported/Dante Precision, damn it.ogg-db5f5c0fe5270b9d3dc401b2469d175f.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Dante Precision, damn it.ogg"
+dest_files=["res://.godot/imported/Dante Precision, damn it.ogg-db5f5c0fe5270b9d3dc401b2469d175f.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
