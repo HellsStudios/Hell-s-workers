@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dcocd0upt8odu"
+path="res://.godot/imported/Sally ooo itsgonnabebeatiful.ogg-8210386bcd4e2b77abbf4cc0492f00bc.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Sally ooo itsgonnabebeatiful.ogg"
+dest_files=["res://.godot/imported/Sally ooo itsgonnabebeatiful.ogg-8210386bcd4e2b77abbf4cc0492f00bc.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

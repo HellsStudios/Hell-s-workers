@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://vt8hdexoc0v6"
+path="res://.godot/imported/Sally aha.ogg-aa48340b02d66aa0e792ee0a85257ab8.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Sally aha.ogg"
+dest_files=["res://.godot/imported/Sally aha.ogg-aa48340b02d66aa0e792ee0a85257ab8.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

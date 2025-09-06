@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dp7gc4smd0wkh"
+path="res://.godot/imported/Sally ohiknewit.ogg-63b9137b280c24a841071091596838ee.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Sally ohiknewit.ogg"
+dest_files=["res://.godot/imported/Sally ohiknewit.ogg-63b9137b280c24a841071091596838ee.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

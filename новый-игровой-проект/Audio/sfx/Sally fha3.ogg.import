@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://g5t8afdbq7hi"
+path="res://.godot/imported/Sally fha3.ogg-cbb300e11a784ce59948f47d0f16909d.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Sally fha3.ogg"
+dest_files=["res://.godot/imported/Sally fha3.ogg-cbb300e11a784ce59948f47d0f16909d.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
