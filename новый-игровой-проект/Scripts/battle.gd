@@ -58,6 +58,22 @@ var enemy_bars: Dictionary = {}  # enemy -> bar
 @export var ENCOUNTER_ENEMIES: Array = []   # список id врагов из JSON/GM
 @export var DEBUG_SALLY := true
 
+
+
+func _hero_scene_for(d: Dictionary) -> PackedScene:
+	var nick := String(d.get("nick",""))
+	if nick != "":
+		var p := "res://Scenes/character_%s.tscn" % nick
+		if ResourceLoader.exists(p):
+			return load(p)
+	return CHAR_SCN
+
+func _enemy_scene_for(id: String) -> PackedScene:
+	var p := "res://Scenes/enemy_%s.tscn" % String(id)
+	if ResourceLoader.exists(p):
+		return load(p)
+	return CHAR_SCN
+
 func _collect_participants() -> Array:
 	var arr: Array = []
 	for h in heroes:
@@ -1761,7 +1777,12 @@ func _prepare_skill_for_cast(actor: Node, skill_in: Dictionary) -> Dictionary:
 
 	return s
 
+func force_defeat() -> void:
+	# вызови твою стандартную логику поражения
+	_finish_battle("defeat")  # ← пример: false = проигрыш
+
 func _ready() -> void:
+	PauseManager.set_mode(Pause.Mode.BATTLE)
 	var payload := GameManager.get_battle_payload()
 	ENCOUNTER_ENEMIES = Array(payload.get("enemies", [])).duplicate()
 	$UI/ActionPanel.connect("action_selected", Callable(self, "_on_action_selected"))
@@ -2435,11 +2456,15 @@ func spawn_party() -> void:
 	var count = min(hero_slots.get_child_count(), party_data.size())
 	for i in range(count):
 		var slot: Node2D = hero_slots.get_child(i)
-		var hero: Node2D  = CHAR_SCN.instantiate()
+		var d = party_data[i]
+		var scn: PackedScene = _hero_scene_for(d)
+		var hero: Node2D = scn.instantiate()
 		slot.add_child(hero)
-		GameManager.apply_battle_start_augments(hero, hero.nick)
 		hero.position = Vector2.ZERO
-		hero.init_from_dict(party_data[i])
+
+		hero.init_from_dict(d)
+		GameManager.apply_battle_start_augments(hero, hero.nick) # ← теперь ник уже есть
+
 		heroes.append(hero)
 
 func _segments_to_pairs(raw: Array) -> Array:
@@ -2505,18 +2530,20 @@ func spawn_enemies() -> void:
 	enemies.clear()
 	var count = min(enemy_slots.get_child_count(), ENCOUNTER_ENEMIES.size())
 	for j in range(count):
+		var eid := String(ENCOUNTER_ENEMIES[j])
+
 		var slot: Node2D = enemy_slots.get_child(j)
-		var foe: Node2D  = CHAR_SCN.instantiate()
+		var scn: PackedScene = _enemy_scene_for(eid)
+		var foe: Node2D  = scn.instantiate()
 		slot.add_child(foe)
 		foe.position = Vector2.ZERO
 
-		# грузим деф из БД
-		var def := GameManager.get_enemy_def(ENCOUNTER_ENEMIES[j])
+		var def := GameManager.get_enemy_def(eid)
 		if typeof(def) == TYPE_DICTIONARY and def.size() > 0:
 			if foe.has_method("init_from_dict"):
 				foe.call("init_from_dict", def)
 			else:
-				# фолбэк
+				# фоллбек как у тебя
 				foe.team = "enemy"
 				foe.nick = String(def.get("nick","Enemy"))
 				foe.max_health = int(def.get("max_health", 70))
@@ -2527,15 +2554,12 @@ func spawn_enemies() -> void:
 				foe.abilities = def.get("abilities", [])
 				foe.set_meta("ai_style", String(def.get("ai_style", "агрессивный")))
 		else:
-			# совсем фолбэк, если БД не нашлась
+			# твой супер-фоллбек
 			foe.team = "enemy"
 			foe.nick = "Enemy%d" % (j+1)
 			foe.max_health = 70; foe.health = 70
 			foe.speed = 8 + j
-			foe.abilities = [
-				{"name":"Удар","target":"single_enemy","damage":8,"accuracy":0.9,"crit":0.05}
-			]
-
+			foe.abilities = [{"name":"Удар","target":"single_enemy","damage":8,"accuracy":0.9,"crit":0.05}]
 		enemies.append(foe)
 
 func _pick_next_actor() -> Node2D:

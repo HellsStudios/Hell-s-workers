@@ -20,15 +20,14 @@ var _cam_phys_prev := true
 
 @onready var end_day_confirm: ConfirmationDialog = $UI/EndDayConfirm
 
-func _on_room_1_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:
+func _on_room_1_input_event(_vp, event: InputEvent, _shape_idx: int) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		$Camera2D.set_drag_enabled(false)
+		cam.set_drag_enabled(false)
 		get_viewport().set_input_as_handled()
-
-		var panel := $Room1PopupPanel
-		# переводим мировые координаты в экранные (как у вас):
-		var scr_pos = ($Camera2D/Room1.global_position - get_viewport().get_canvas_transform().origin).floor()
-		panel.open_from(scr_pos, 0.30)
+		# было: $Room1PopupPanel.open_from(...)
+		# стало:
+		if is_instance_valid(manage_menu) and manage_menu.has_method("open_cooking_tab"):
+			manage_menu.call("open_cooking_tab")
 
 func _start_input_quarantine(sec: float = 0.30) -> void:
 	# глушим мир на sec секунд
@@ -98,6 +97,7 @@ func _on_ToTimelineButton_pressed() -> void:
 
 
 func _ready() -> void:
+	PauseManager.set_mode(Pause.Mode.GENERIC)
 	set_process(true)  # нужно для таймового логирования
 	# ... остальное как у тебя было ...
 	_apply_phase_visuals()
@@ -294,7 +294,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	# Закрытие по ESC (тоже с карантином)
-	if event.is_action_pressed("ui_cancel") and $Room1PopupPanel.visible:
-		_start_input_quarantine(0.30) # длина твоей анимации 0.25с + запас
-		_on_button_exit_pressed()
-		get_viewport().set_input_as_handled()
+	#if event.is_action_pressed("ui_cancel") and $Room1PopupPanel.visible:
+		#_start_input_quarantine(0.30) # длина твоей анимации 0.25с + запас
+		#_on_button_exit_pressed()
+		#get_viewport().set_input_as_handled()

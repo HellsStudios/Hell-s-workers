@@ -238,7 +238,30 @@ func refresh_daily_tasks() -> void:
 func mark_timeline_used() -> void:
 	timeline_used_today = true
 
+
+var _timeline_ref: Node = null # активная сцена таймлайна (регистрируется из timeline.gd)
 # === Победа по крестлям
+
+func register_timeline(tl: Node) -> void:
+	_timeline_ref = tl
+
+func _capture_timeline_state() -> Dictionary:
+	var st := {
+		"slot": int(timeline_clock.get("slot", 0)),
+		"slot_sec": float(timeline_clock.get("slot_sec", 0.7)),
+		"running": bool(timeline_clock.get("running", false)),
+	}
+	# если активная сцена таймлайна есть — берём «живые» значения напрямую
+	if is_instance_valid(_timeline_ref):
+		# timeline_controller.gd объявляет эти переменные, поэтому читаем прямо
+		st.slot = int(_timeline_ref.current_slot)
+		st.slot_sec = float(_timeline_ref.base_sec_per_slot)
+		st.running = bool(_timeline_ref.running)
+	return st
+
+func _save_timeline_clock() -> void:
+	timeline_clock = _capture_timeline_state()
+
 
 func check_victory_and_maybe_quit(parent: Node = null) -> bool:
 	var kv = get("krestli")          # Node.get — только 1 аргумент
@@ -361,6 +384,7 @@ func _apply_dialog_result(id: String, result: Dictionary) -> void:
 		var b: Dictionary = result["battle"]
 		var eids: Array = b.get("enemies", [])
 		var exit_scene := String(b.get("exit_scene", "res://Scenes/timeline.tscn"))
+		print("[ENEMIES] ",eids)
 		push_battle(eids)  # используй свою реализацию
 
 	# 5) переход сцены (опционально)
@@ -380,12 +404,43 @@ func _on_dialog_finished(id: String, result: Dictionary) -> void:
 func make_party_hero_defs() -> Array:
 	return make_party_dicts()
 
-func register_timeline(node: Node) -> void:
-	timeline_ref = node
-
 func goto_mansion() -> void:
 	timeline_ref = null
 	get_tree().change_scene_to_file("res://Scenes/mansion.tscn")
+
+func return_to_mansion_keep_timeline() -> void:
+	# 1) снимаем паузу, если вдруг была
+	if get_tree().paused:
+		get_tree().paused = false
+
+	# 2) фиксируем положение указателя/скорость/статус
+	_save_timeline_clock()
+
+	# 3) остаёмся в дневной фазе (без «вечера» и без отметки used_today)
+	current_phase = 1  # день
+
+	# 4) уходим в особняк
+	get_tree().change_scene_to_file("res://Scenes/mansion.tscn")
+
+func battle_defeat() -> void:
+	# Снимаем паузу, чтобы сцена могла завершиться
+	if get_tree().paused:
+		get_tree().paused = false
+
+	var scn := get_tree().current_scene
+	if is_instance_valid(scn):
+		if scn.has_method("battle_defeat"):
+			scn.call("battle_defeat")            # у тебя в Battle.gd есть такой метод
+			return
+		if scn.has_method("finish_battle"):
+			scn.call("finish_battle", "defeat") # фолбэк
+			return
+
+	# если вдруг мы не в бою — просто выходим в особняк, чтобы не залипнуть
+	get_tree().change_scene_to_file("res://Scenes/mansion.tscn")
+
+func battle_exit_defeat() -> void:
+	battle_defeat()
 
 func goto_timeline() -> void:
 	get_tree().change_scene_to_file("res://Scenes/timeline.tscn")
@@ -407,38 +462,59 @@ func _resume_timeline() -> void:
 			timeline_ref.call("_start")
 
 # enemies: ["id","id2"], heroes: ["Berit","Sally"] (необязательно)
-func push_battle(enemies: Array) -> void:
-	# сохраняем «куда возвращаться» и состояние таймлайна
+func push_battle(enemies: Array, meta: Dictionary = {}) -> void:
 	var cs = get_tree().current_scene
-	_return_scene_path = cs.scene_file_path if cs and cs.scene_file_path != "" else TIMELINE_SCENE
+	_return_scene_path = (cs.scene_file_path if cs and cs.scene_file_path != "" else TIMELINE_SCENE)
 
-	# стопаем бег таймлайна, но НЕ сбрасываем slot
 	timeline_clock["running"] = false
 
 	_battle_payload = {
-		"party": make_party_dicts(),  # твой уже готовый хелпер
-		"enemies": enemies.duplicate()
+		"party": make_party_dicts(),
+		"enemies": enemies.duplicate(),
+		"rewards": meta.get("rewards", {}),
+		"origin": meta.get("origin", {})  # например: {"kind":"timeline_task","hero":...,"inst_id":...}
 	}
+	print("[PUSH]", _battle_payload)
 	get_tree().change_scene_to_file(BATTLE_SCENE)
 
 func get_battle_payload() -> Dictionary:
 	return _battle_payload.duplicate(true)
 
 func end_battle(victory: bool, participants: Array = []) -> void:
-	# если поражение — участникам: hp=1, stamina=0
+	# поражение — штраф участникам (как было)
 	if not victory:
 		var who: Array = participants.duplicate()
-		if who.is_empty():
-			# на крайний случай — вся пати
-			who = party_names.duplicate()
+		if who.is_empty(): who = party_names.duplicate()
 		for name in who:
 			set_res_cur(String(name), "hp", 1)
 			set_res_cur(String(name), "stamina", 0)
+
+	# награды/провал таска
+	var payload := _battle_payload.duplicate(true)
+	var rw: Dictionary = payload.get("rewards", {})
+	var origin: Dictionary = payload.get("origin", {})
+
+	if victory and not rw.is_empty():
+		award_rewards(rw)
+		day_summary.krestli += int(rw.get("krestli", 0))
+		day_summary.etheria += int(rw.get("etheria", 0))
+		for it in rw.get("items", []):
+			if typeof(it) == TYPE_DICTIONARY: day_summary.items.append(it)
+		for sp in rw.get("supplies", []):
+			if typeof(sp) == TYPE_DICTIONARY: day_summary.supplies.append(sp)
+
+	if not victory and String(origin.get("kind","")) == "timeline_task":
+		var h := String(origin.get("hero",""))
+		var iid := int(origin.get("inst_id", 0))
+		if h != "" and iid > 0:
+			# фиксируем ПРОВАЛ задачи, чтобы UI показал "провалено" и без наград
+			finish_task(h, iid, false)
 
 	_battle_payload.clear()
 	var back := _return_scene_path if _return_scene_path != "" else TIMELINE_SCENE
 	_return_scene_path = ""
 	get_tree().change_scene_to_file(back)
+
 
 func _tlog(msg: String, ctx: Dictionary = {}) -> void:
 	if DEBUG_TASKS:
@@ -615,7 +691,11 @@ func _resolve_event_option(hero: String, inst_id: int, ev_def: Dictionary, opt: 
 	if pack.has("battle"):
 		var bdef: Dictionary = pack["battle"]
 		var eids: Array = bdef.get("enemies", [])
-		push_battle(eids)
+		var meta := {
+			"rewards": bdef.get("rewards", {}),
+			"origin": {"kind":"timeline_task", "hero": hero, "inst_id": inst_id}
+		}
+		push_battle(eids, meta)
 		return
 
 	# применяем выхлоп (деньги/эфирия/опыт/итемы/припасы/кондинции)
