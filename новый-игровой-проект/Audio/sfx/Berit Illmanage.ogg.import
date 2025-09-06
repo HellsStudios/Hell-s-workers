@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cfq2il5bvt24m"
+path="res://.godot/imported/Berit Illmanage.ogg-275d05dbf2590b60f83ec0fe0a5bd29c.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Illmanage.ogg"
+dest_files=["res://.godot/imported/Berit Illmanage.ogg-275d05dbf2590b60f83ec0fe0a5bd29c.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

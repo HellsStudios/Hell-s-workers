@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://0405ogl5m7iy"
+path="res://.godot/imported/Berit Allrightletsgo.ogg-15e6e5b976bc4eb7b4a398b9625bc2ad.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Allrightletsgo.ogg"
+dest_files=["res://.godot/imported/Berit Allrightletsgo.ogg-15e6e5b976bc4eb7b4a398b9625bc2ad.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

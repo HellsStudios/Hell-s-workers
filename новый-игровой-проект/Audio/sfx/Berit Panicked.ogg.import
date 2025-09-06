@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dppgtwr2bfyhv"
+path="res://.godot/imported/Berit Panicked.ogg-223032888b247bf4b8c123be303939fa.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Panicked.ogg"
+dest_files=["res://.godot/imported/Berit Panicked.ogg-223032888b247bf4b8c123be303939fa.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

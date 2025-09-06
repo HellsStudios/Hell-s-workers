@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://bnckh5wodsk52"
+path="res://.godot/imported/Berit Damn.ogg-c22fd34f67095f4a4929c7f083599924.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Damn.ogg"
+dest_files=["res://.godot/imported/Berit Damn.ogg-c22fd34f67095f4a4929c7f083599924.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dvbyf6awh82pm"
+path="res://.godot/imported/Berit Tired.ogg-aa2e68e1047f87fdf5163ef50fd7f199.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Tired.ogg"
+dest_files=["res://.godot/imported/Berit Tired.ogg-aa2e68e1047f87fdf5163ef50fd7f199.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

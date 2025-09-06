@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dgoeu6y1l1aqr"
+path="res://.godot/imported/Berit Fine.ogg-e3c5f692bb92b098b26cb4fed0c01b2d.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Fine.ogg"
+dest_files=["res://.godot/imported/Berit Fine.ogg-e3c5f692bb92b098b26cb4fed0c01b2d.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

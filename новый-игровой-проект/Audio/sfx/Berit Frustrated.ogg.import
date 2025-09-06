@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://ciplhhe3lnopd"
+path="res://.godot/imported/Berit Frustrated.ogg-3227adda2503c8ace632163efcf2e271.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Frustrated.ogg"
+dest_files=["res://.godot/imported/Berit Frustrated.ogg-3227adda2503c8ace632163efcf2e271.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

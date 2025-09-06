@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://djgvhtifyqycn"
+path="res://.godot/imported/Berit AHWait.ogg-5ce4ade6a02749b7bcaab1df5a9a303a.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit AHWait.ogg"
+dest_files=["res://.godot/imported/Berit AHWait.ogg-5ce4ade6a02749b7bcaab1df5a9a303a.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

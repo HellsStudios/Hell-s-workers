@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cg5x40lw7hh4h"
+path="res://.godot/imported/Berit HurryUp.ogg-901ebb6054ae60d8e1790f0b4d8d67ef.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit HurryUp.ogg"
+dest_files=["res://.godot/imported/Berit HurryUp.ogg-901ebb6054ae60d8e1790f0b4d8d67ef.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

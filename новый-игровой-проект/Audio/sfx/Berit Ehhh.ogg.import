@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://ncu3vog6rnju"
+path="res://.godot/imported/Berit Ehhh.ogg-d831d14fc988cae297181b5185954dec.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Ehhh.ogg"
+dest_files=["res://.godot/imported/Berit Ehhh.ogg-d831d14fc988cae297181b5185954dec.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

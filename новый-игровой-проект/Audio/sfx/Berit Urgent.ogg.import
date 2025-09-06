@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cey44aq0vrom"
+path="res://.godot/imported/Berit Urgent.ogg-48c59e8c1edbb237bb1e05113e721220.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Urgent.ogg"
+dest_files=["res://.godot/imported/Berit Urgent.ogg-48c59e8c1edbb237bb1e05113e721220.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

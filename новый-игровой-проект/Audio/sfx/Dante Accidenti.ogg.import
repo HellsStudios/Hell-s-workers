@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://10ox0lrw7gp2"
+path="res://.godot/imported/Dante Accidenti.ogg-6a083b002dc58b3148d0331c8cf4bf49.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Dante Accidenti.ogg"
+dest_files=["res://.godot/imported/Dante Accidenti.ogg-6a083b002dc58b3148d0331c8cf4bf49.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

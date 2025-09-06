@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cw02q6j4ql1xm"
+path="res://.godot/imported/Berit Affeared.ogg-b9ea266dc8e1c57c9b56115bc163b8ff.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Affeared.ogg"
+dest_files=["res://.godot/imported/Berit Affeared.ogg-b9ea266dc8e1c57c9b56115bc163b8ff.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

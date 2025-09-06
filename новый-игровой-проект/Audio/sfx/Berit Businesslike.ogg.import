@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dvo650betg4p6"
+path="res://.godot/imported/Berit Businesslike.ogg-70f30dd8a56fd138605966e33c352c8f.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Businesslike.ogg"
+dest_files=["res://.godot/imported/Berit Businesslike.ogg-70f30dd8a56fd138605966e33c352c8f.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

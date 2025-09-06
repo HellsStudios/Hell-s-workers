@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cw1w6qnx35amp"
+path="res://.godot/imported/Berit Phew.ogg-78dd59c9f539344d7db0f4e1e958c59f.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Phew.ogg"
+dest_files=["res://.godot/imported/Berit Phew.ogg-78dd59c9f539344d7db0f4e1e958c59f.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://d0ofomuuxgplx"
+path="res://.godot/imported/Berit Cursed.ogg-3d19df4237146ef7a86e8ce41e1c23a5.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Cursed.ogg"
+dest_files=["res://.godot/imported/Berit Cursed.ogg-3d19df4237146ef7a86e8ce41e1c23a5.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

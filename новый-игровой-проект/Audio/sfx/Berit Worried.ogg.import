@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cibjk7kk3fq0w"
+path="res://.godot/imported/Berit Worried.ogg-9bc31cc57b69dc6ba64f073d6d1a208c.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Worried.ogg"
+dest_files=["res://.godot/imported/Berit Worried.ogg-9bc31cc57b69dc6ba64f073d6d1a208c.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

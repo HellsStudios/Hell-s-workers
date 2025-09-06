@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://ulminbfq3xde"
+path="res://.godot/imported/Berit Idontlikethis.ogg-cf196911b560fe3f841658f5195f13c0.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Idontlikethis.ogg"
+dest_files=["res://.godot/imported/Berit Idontlikethis.ogg-cf196911b560fe3f841658f5195f13c0.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

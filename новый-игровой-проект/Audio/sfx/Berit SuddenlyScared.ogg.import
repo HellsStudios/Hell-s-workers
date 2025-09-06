@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dd07wgun3jc1k"
+path="res://.godot/imported/Berit SuddenlyScared.ogg-1711d6107393c4bc3c8ea2bd64f2fec6.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit SuddenlyScared.ogg"
+dest_files=["res://.godot/imported/Berit SuddenlyScared.ogg-1711d6107393c4bc3c8ea2bd64f2fec6.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://duoiaqqne6w57"
+path="res://.godot/imported/Berit Angry.ogg-9c44c2383758b1988b11406798e999d4.oggvorbisstr"
+
+[deps]
+
+source_file="res://Audio/sfx/Berit Angry.ogg"
+dest_files=["res://.godot/imported/Berit Angry.ogg-9c44c2383758b1988b11406798e999d4.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
