@@ -787,14 +787,18 @@ func _redraw_schedule() -> void:
 			card.set_size(Vector2(dur * SLOT_WIDTH, card.size.y))
 			row.add_child(card)
 			var now := current_slot
-			var active_task := false
-			if now >= start and now < start + dur:
-				active_task = true
-			if running:
+			var is_active := (now >= start and now < start + dur)   # «внутри окна» задачи
+			var is_pre_active := (not running) and (now == start)   # стоит ровно «под указателем» на паузе
+
+			# Блокируем только когда ИДЁТ время и задача действительно активна.
+			if running and is_active:
 				card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			else:
-				if active_task:
-					card.mouse_filter = Control.MOUSE_FILTER_IGNORE  # не получать мышь → DnD не стартует
-					card.modulate = Color(1, 1, 1, 0.9)              # лёгкий визуальный намёк (не обязательно)
-				else:
-					card.mouse_filter = Control.MOUSE_FILTER_STOP
+				# На паузе можно таскать даже если start == now (pre-active).
+				card.mouse_filter = Control.MOUSE_FILTER_STOP
+
+			# (опционально) лёгкий намёк, что вот-вот начнётся
+			if is_pre_active:
+				card.modulate = Color(1, 1, 1, 0.96)
+			else:
+				card.modulate = Color(1, 1, 1, 1)

@@ -188,7 +188,11 @@ func file_text(p: String) -> String:
 	return FileAccess.get_file_as_string(real) if FileAccess.file_exists(real) else ""
 
 func change_scene_safe(p: String) -> void:
+	await Fader.fade_out(0.25)
 	get_tree().change_scene_to_file(resolve_res_path(p))
+	await get_tree().process_frame
+	await Fader.fade_in(0.25)
+
 
 # === Хелпер: безопасно напечатать тост (если нет — просто print)
 func toast(msg: String) -> void:
@@ -391,7 +395,10 @@ func _apply_dialog_result(id: String, result: Dictionary) -> void:
 	if result.has("goto_scene"):
 		var path := String(result["goto_scene"])
 		if path != "":
+			await Fader.fade_out(0.25)
 			get_tree().change_scene_to_file(path)
+			await get_tree().process_frame
+			await Fader.fade_in(0.25)
 
 
 
@@ -406,7 +413,10 @@ func make_party_hero_defs() -> Array:
 
 func goto_mansion() -> void:
 	timeline_ref = null
+	await Fader.fade_out(0.25)
 	get_tree().change_scene_to_file("res://Scenes/mansion.tscn")
+	await get_tree().process_frame
+	await Fader.fade_in(0.25)
 
 func return_to_mansion_keep_timeline() -> void:
 	# 1) снимаем паузу, если вдруг была
@@ -420,7 +430,11 @@ func return_to_mansion_keep_timeline() -> void:
 	current_phase = 1  # день
 
 	# 4) уходим в особняк
+	await Fader.fade_out(0.25)
 	get_tree().change_scene_to_file("res://Scenes/mansion.tscn")
+	await get_tree().process_frame
+	await Fader.fade_in(0.25)
+
 
 func battle_defeat() -> void:
 	# Снимаем паузу, чтобы сцена могла завершиться
@@ -437,13 +451,21 @@ func battle_defeat() -> void:
 			return
 
 	# если вдруг мы не в бою — просто выходим в особняк, чтобы не залипнуть
+
+	await Fader.fade_out(0.25)
 	get_tree().change_scene_to_file("res://Scenes/mansion.tscn")
+	await get_tree().process_frame
+	await Fader.fade_in(0.25)
+
 
 func battle_exit_defeat() -> void:
 	battle_defeat()
 
 func goto_timeline() -> void:
+	await Fader.fade_out(0.25)
 	get_tree().change_scene_to_file("res://Scenes/timeline.tscn")
+	await get_tree().process_frame
+	await Fader.fade_in(0.25)
 
 func _suspend_timeline() -> void:
 	if timeline_ref != null:
@@ -475,7 +497,10 @@ func push_battle(enemies: Array, meta: Dictionary = {}) -> void:
 		"origin": meta.get("origin", {})  # например: {"kind":"timeline_task","hero":...,"inst_id":...}
 	}
 	print("[PUSH]", _battle_payload)
+	await Fader.fade_out(0.25)
 	get_tree().change_scene_to_file(BATTLE_SCENE)
+	await get_tree().process_frame
+	await Fader.fade_in(0.25)
 
 func get_battle_payload() -> Dictionary:
 	return _battle_payload.duplicate(true)
@@ -513,7 +538,11 @@ func end_battle(victory: bool, participants: Array = []) -> void:
 	_battle_payload.clear()
 	var back := _return_scene_path if _return_scene_path != "" else TIMELINE_SCENE
 	_return_scene_path = ""
+	await Fader.fade_out(0.25)
 	get_tree().change_scene_to_file(back)
+	await get_tree().process_frame
+	await Fader.fade_in(0.25)
+
 
 
 func _tlog(msg: String, ctx: Dictionary = {}) -> void:
