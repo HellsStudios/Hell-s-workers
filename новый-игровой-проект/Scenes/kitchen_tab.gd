@@ -356,7 +356,7 @@ func _on_serve_pressed() -> void:
 		total += int(v)
 
 	if total + store > left:
-		Toasts.warn("Нельзя раздать %d + отложить %d — в партии только %d." % [total, store, left])
+		Toasts.warn("Нельзя раздать %d + отложить в контейнер %d — в партии только %d." % [total, store, left])
 		return
 
 	var res := GameManager.distribute_pending(assign, store)

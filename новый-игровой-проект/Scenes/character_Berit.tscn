@@ -1,16 +1,13 @@
-[gd_scene load_steps=25 format=3 uid="uid://cu3i0qia55in7"]
+[gd_scene load_steps=22 format=3 uid="uid://cu3i0qia55in7"]
 
 [ext_resource type="Script" uid="uid://bokvhdh0dn8fu" path="res://Scripts/Character.gd" id="1_lkv7d"]
 [ext_resource type="Texture2D" uid="uid://cnjy0rh1ctpme" path="res://Assets/Sprites/Berit/Berit_rightleg.png" id="2_ejsiy"]
 [ext_resource type="Texture2D" uid="uid://b3lfbflaarygv" path="res://Assets/Sprites/Berit/Berit_tail1.png" id="2_wbia7"]
 [ext_resource type="Texture2D" uid="uid://hniymsm518nj" path="res://Assets/Sprites/Berit/злое.png" id="3_2mse5"]
 [ext_resource type="Texture2D" uid="uid://vf1trtkh8ba2" path="res://Assets/Sprites/Berit/Berit_leftarm.png" id="3_kq7hj"]
-[ext_resource type="Texture2D" uid="uid://cpp036irh5ovq" path="res://Assets/Sprites/Berit/Berit_tail3.png" id="3_ovofk"]
-[ext_resource type="Texture2D" uid="uid://c4e30lag6a21d" path="res://Assets/Sprites/Berit/Berit_tail4.png" id="4_5ypwu"]
 [ext_resource type="Texture2D" uid="uid://b1p55gqaioh68" path="res://Assets/Sprites/Berit/Berit_leftleg.png" id="4_7iw6i"]
 [ext_resource type="Texture2D" uid="uid://lrkfilqo1wkx" path="res://Assets/Sprites/Berit/Berit_rightarm.png" id="4_reotu"]
 [ext_resource type="Texture2D" uid="uid://bwi4af6yy7ov7" path="res://Assets/Sprites/Berit/Berit_body.png" id="5_l1rcp"]
-[ext_resource type="Texture2D" uid="uid://dxubv8xflnkkm" path="res://Assets/Sprites/Berit/Berit_tail2.png" id="5_xygac"]
 [ext_resource type="Texture2D" uid="uid://n3y7mas4jn1e" path="res://Assets/Sprites/Berit/Berit_head.png" id="8_wbia7"]
 [ext_resource type="Texture2D" uid="uid://77skie3ujhlf" path="res://Assets/Sprites/Berit/Кулак.png" id="9_wbia7"]
 [ext_resource type="Texture2D" uid="uid://dye3n1a4rhqdf" path="res://Assets/Sprites/Berit/стандарт.png" id="10_7iw6i"]
@@ -3146,30 +3143,29 @@ position = Vector2(-8, 0)
 offset = Vector2(19.3037, -56.0984)
 polygon = PackedVector2Array(-16, 56, -40, 72, -72, 64, -64, 80, -40, 80, -16, 64)
 
-[node name="Sprite2D" type="Sprite2D" parent="Tail"]
-position = Vector2(3.8147e-06, 8)
+[node name="Sprite2D4" type="Sprite2D" parent="Tail"]
+position = Vector2(0, 8)
 scale = Vector2(0.07, 0.07)
 texture = ExtResource("2_wbia7")
 offset = Vector2(-472.286, -198.357)
 
 [node name="Sprite2D3" type="Sprite2D" parent="Tail"]
-position = Vector2(-56, 48)
-rotation = -5.44717
-scale = Vector2(0.07, 0.07)
-texture = ExtResource("3_ovofk")
-offset = Vector2(-472.286, -198.357)
-
-[node name="Sprite2D4" type="Sprite2D" parent="Tail"]
-position = Vector2(-8, 40)
-scale = Vector2(0.07, 0.07)
-texture = ExtResource("4_5ypwu")
+rotation = -0.287979
+scale = Vector2(0.079, 0.07)
+texture = ExtResource("2_wbia7")
 offset = Vector2(-472.286, -198.357)
 
 [node name="Sprite2D2" type="Sprite2D" parent="Tail"]
-position = Vector2(-8, 24)
-rotation = -0.410152
+position = Vector2(0, 32.837)
+rotation = 0.455531
+scale = Vector2(0.068, 0.068)
+texture = ExtResource("2_wbia7")
+offset = Vector2(-472.286, -198.357)
+
+[node name="Sprite2D" type="Sprite2D" parent="Tail"]
+position = Vector2(3.8147e-06, 8)
 scale = Vector2(0.07, 0.07)
-texture = ExtResource("5_xygac")
+texture = ExtResource("2_wbia7")
 offset = Vector2(-472.286, -198.357)
 
 [node name="LeftArm" type="Node2D" parent="."]

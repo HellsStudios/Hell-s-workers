@@ -1,13 +1,18 @@
-[gd_scene load_steps=9 format=3 uid="uid://cdw4xi8jdmhhr"]
+[gd_scene load_steps=12 format=3 uid="uid://cdw4xi8jdmhhr"]
 
 [ext_resource type="Script" uid="uid://2v4dau4mmixv" path="res://Scripts/mansion.gd" id="1_5jwi0"]
 [ext_resource type="Script" uid="uid://brs16ogkadj40" path="res://Scripts/camera_2d.gd" id="2_exq5i"]
 [ext_resource type="Script" uid="uid://c7oate8n5pgwg" path="res://Scenes/management_menu.gd" id="3_e6st1"]
 [ext_resource type="Texture2D" uid="uid://b1ii2cvhql6n" path="res://Assets/bg/berit_room.png" id="3_umc7y"]
+[ext_resource type="PackedScene" uid="uid://cwsmxeu86tky5" path="res://Scenes/Cutscene Berit.tscn" id="4_ek7eh"]
+[ext_resource type="Script" uid="uid://u3s3bpipo5tn" path="res://Scenes/stop_bg.gd" id="5_jpagq"]
 [ext_resource type="Script" uid="uid://c7ij7fcpvrcl7" path="res://Scenes/kitchen_tab.gd" id="6_ek7eh"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_umc7y"]
 size = Vector2(384, 192)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ek7eh"]
+size = Vector2(280.702, 173.643)
 
 [sub_resource type="Gradient" id="Gradient_5jwi0"]
 colors = PackedColorArray(0, 0, 1, 1, 1, 1, 1, 1)
@@ -35,6 +40,7 @@ script = ExtResource("2_exq5i")
 
 [node name="Room2" type="Area2D" parent="Camera2D" groups=["rooms"]]
 position = Vector2(600, 104)
+collision_mask = 0
 
 [node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room2"]
 scale = Vector2(0.2, 0.2)
@@ -42,6 +48,33 @@ texture = ExtResource("3_umc7y")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room2"]
 shape = SubResource("RectangleShape2D_umc7y")
+
+[node name="Berit_Sleep" parent="Camera2D/Room2" instance=ExtResource("4_ek7eh")]
+position = Vector2(-109.565, -8.075)
+scale = Vector2(0.57, 0.645)
+main_anim = "Sleep"
+additional_anim = "Sleep_cozy"
+spec_anim = "Hard_awake"
+
+[node name="Hitbox" type="Area2D" parent="Camera2D/Room2/Berit_Sleep"]
+collision_layer = 128
+collision_mask = 0
+collision_priority = 100.0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room2/Berit_Sleep/Hitbox"]
+position = Vector2(9.763, 49.7287)
+shape = SubResource("RectangleShape2D_ek7eh")
+
+[node name="StopBG" type="Control" parent="Camera2D/Room2/Berit_Sleep"]
+layout_mode = 3
+anchors_preset = 0
+offset_left = -131.0
+offset_top = -37.0
+offset_right = 150.0
+offset_bottom = 137.0
+mouse_filter = 1
+script = ExtResource("5_jpagq")
+character_path = NodePath("..")
 
 [node name="Room3" type="Area2D" parent="Camera2D" groups=["rooms"]]
 position = Vector2(1000, 104)
@@ -645,6 +678,7 @@ script = ExtResource("6_ek7eh")
 metadata/_tab_index = 6
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/KitchenTab"]
+layout_mode = 0
 offset_left = 4.0
 offset_top = 4.0
 offset_right = 1057.0
@@ -725,7 +759,7 @@ value = 1.0
 [node name="FridgeTakeButton" type="Button" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/KitchenTab/VBoxContainer/HBoxContainer/VBoxContainer4"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Достать"
+text = "Достать из холодильника"
 
 [node name="VBoxContainer7" type="VBoxContainer" parent="UI/ManagementMenu/MarginContainer/VBoxContainer/Tabs/KitchenTab/VBoxContainer/HBoxContainer"]
 layout_mode = 2
