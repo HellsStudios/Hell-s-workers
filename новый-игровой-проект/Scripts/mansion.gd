@@ -218,7 +218,7 @@ func _on_dialog_finished(id: String, res: Dictionary) -> void:
 	if id != "d_intro_berit_sally":
 		return
 
-func _on_room_2_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:   if event is InputEventMouseButton and event.pressed:
+func _on_room_2_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:   if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		print("Комната 2 нажата")
 		if GameManager.timeline_used_today:
 			GameManager.toast("Сегодня вы уже занимались делами.")
@@ -226,7 +226,7 @@ func _on_room_2_input_event(viewport: Node, event: InputEvent, shape_idx: int) -
 			_on_back_to_timeline_pressed()
 
 
-func _on_room_3_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:    if event is InputEventMouseButton and event.pressed:
+func _on_room_3_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:    if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		print("Комната 3 нажата")
 		if event is InputEventMouseButton and event.pressed:
 			# Если уже вечер/ночь или таймлайн пройден — можно завершать день

@@ -10,7 +10,7 @@ var current_phase: int = 0
 var phase_names = ["Утро", "День", "Вечер", "Ночь"]
 var items_db: Dictionary = {}        # id -> def (из items.json)
 var base_inventory: Dictionary = {}  # id -> количество (на базе)
-
+const HUNGRY_CLEAR_SATIETY := 40
 var supplies_db: Dictionary = {}        # id -> def (из supplies.json)
 var supplies_inventory: Dictionary = {} # id -> count (на базе)
 const SUPPLIES_JSON := "res://Data/supplies.json"
@@ -221,7 +221,8 @@ func start_new_day() -> void:
 
 	# Обновить пул дейликов
 	refresh_daily_tasks()
-
+	_apply_auto_conditions_at_day_start()
+	_tick_conditions_and_phase_effects()
 	emit_signal("day_started", day)
 
 # === Конец дня (с диалогом или без него вызывается снаружи)
@@ -1201,44 +1202,98 @@ func _apply_costs_and_rewards(hero: String, def: Dictionary, outcome: Dictionary
 func _evaluate_outcome(hero: String, def: Dictionary) -> Dictionary:
 	var base := 60
 
-	# настроение
-	var mv := mood_value(hero)
-	var aff_mood: Dictionary = {}
+	# --- 1) Настроение ---
+	var mv := mood_value(hero)                    # 0..100
 	var aff_root: Dictionary = def.get("affinity", {})
-	if aff_root.has("mood"):
-		aff_mood = aff_root["mood"]
-	var per10 := int(aff_mood.get("per10", 0))
-	base += per10 * int(mv / 10)
+	var aff_mood: Dictionary = aff_root.get("mood", {})
+	base += int(aff_mood.get("per10", 1)) * int(mv / 10)   # по умолчанию +1 за каждые 10 настроения
 
-	# квалификация
-	var req: Dictionary = {}
-	if def.has("require"):
-		var r: Dictionary = def["require"]
-		if r.has("qual"):
-			req = r["qual"]
+	# --- 2) Квалификации ---
+	var req: Dictionary = def.get("require", {}).get("qual", {})
 	for q in req.keys():
 		var need := int(req[q])
 		var have := get_qual_level(hero, String(q))
 		base += (have - need) * 8
 
-	# кондинции
-	var aff_conds: Dictionary = {}
-	if aff_root.has("conds"):
-		aff_conds = aff_root["conds"]
+	# --- 3) Кондинции из JSON: affinity.conds = {"injury": -12, "fatigue": -8, ...}
+	var aff_conds: Dictionary = aff_root.get("conds", {})
 	for c in aff_conds.keys():
 		if has_condition(hero, String(c)):
 			base += int(aff_conds[c])
 
-	# рандом и кламп
-	var roll := randi_range(-10, 10)
-	var chance := base + roll
-	if chance < 5:
-		chance = 5
-	if chance > 95:
-		chance = 95
+	# --- 4) Сытость и ресурсы (настроено через affinity.stats) ---
+	# Формат в дефе задачи:
+	# "affinity": { "stats": {
+	#    "satiety_per10": 1,    # за каждые 10 пунктов сытости выше/ниже 50
+	#    "stamina_per10": 1,    # за каждые 10% стамины относительно 50%
+	#    "hp_per10": 0,         # по умолчанию 0 (не все задачи требуют HP)
+	#    "mana_per10": 0
+	# }}
+	var S = aff_root.get("stats", {})
 
-	var ok := chance >= 50
+	var sat := int(hero_satiety.get(hero, 50))             # 0..100
+	base += int(S.get("satiety_per10", 1)) * int((sat - 50) / 10)
+
+	var sta_max = max(1, res_max(hero, "stamina"))
+	var sta_pct := int( (res_cur(hero, "stamina") * 100) / sta_max )
+	base += int(S.get("stamina_per10", 1)) * int((sta_pct - 50) / 10)
+
+	var hp_max = max(1, res_max(hero, "hp"))
+	var hp_pct := int( (res_cur(hero, "hp") * 100) / hp_max )
+	base += int(S.get("hp_per10", 0)) * int((hp_pct - 50) / 10)
+
+	var mana_max := res_max(hero, "mana")
+	if mana_max > 0:
+		var mana_pct := int( (res_cur(hero, "mana") * 100) / mana_max )
+		base += int(S.get("mana_per10", 0)) * int((mana_pct - 50) / 10)
+
+	# --- 5) Итоговая вероятность, без «±10» шума ---
+	var chance = clamp(base, 5, 95)
+
+	# Опционально: микрошум, если хочешь (по умолчанию 0):
+	var jitter := int(aff_root.get("jitter", 0)) # например 3 → ±3
+	if jitter > 0:
+		chance = clamp(chance + randi_range(-jitter, jitter), 1, 99)
+
+	# --- 6) Рандом на основе шанса ---
+	var ok = (randi_range(1, 100) <= chance)
 	return {"success": ok, "chance": chance}
+
+func _apply_auto_conditions_at_day_start() -> void:
+	for hero in party_names:
+		var hp_max = max(1, res_max(hero, "hp"))
+		var st_max = max(1, res_max(hero, "stamina"))
+		var mn_max = max(1, res_max(hero, "mana"))
+		var hp_pct := int((res_cur(hero, "hp") * 100) / hp_max)
+		var st_pct := int((res_cur(hero, "stamina") * 100) / st_max)
+		var mn_pct := int((res_cur(hero, "mana") * 100) / mn_max) if (mn_max > 0) else 100
+		var sat    := int(hero_satiety.get(hero, 50))
+		var mood   := int(hero_mood.get(hero, 50))
+
+		for cid in conditions_db.keys():
+			var def: Dictionary = conditions_db[cid]
+			var auto: Dictionary = def.get("auto", {})
+			if auto.is_empty(): continue
+
+			var ok := false
+
+			# Пороговые проверки
+			if auto.has("satiety_le")      and sat  <= int(auto["satiety_le"]):        ok = true
+			if auto.has("mood_le")         and mood <= int(auto["mood_le"]):           ok = true
+			if auto.has("hp_pct_le")       and hp_pct <= int(auto["hp_pct_le"]):       ok = true
+			if auto.has("stamina_pct_le")  and st_pct <= int(auto["stamina_pct_le"]):  ok = true
+			if auto.has("mana_pct_le") and mn_max>0 and mn_pct <= int(auto["mana_pct_le"]): ok = true
+
+			# По номеру дня (каждый N-й)
+			if not ok and auto.has("day_mod"):
+				var mod = max(1, int(auto["day_mod"]))
+				if day % mod == 0:
+					ok = true
+
+			if ok:
+				var days  := int(auto.get("days", 0))
+				var phases:= int(auto.get("phases", 2))
+				add_condition(hero, String(cid), days, phases)
 
 
 
@@ -2339,6 +2394,8 @@ func distribute_pending(assign: Dictionary, to_container: int) -> Dictionary:
 		var add  = int(round(float(base) * mod)) * give
 
 		hero_satiety[hero] = clampi(int(hero_satiety.get(hero, 50)) + add, 0, 100)
+		if has_condition(hero, "hungry") and hero_satiety[hero] >= HUNGRY_CLEAR_SATIETY:
+			remove_condition(hero, "hungry") # сам эмитит conditions_changed
 		res["served"][hero] = give
 		left -= give
 
@@ -2755,7 +2812,7 @@ func make_party_dicts() -> Array:
 			var d: Dictionary = all_heroes[name].duplicate(true)
 			# ← добавляем моды статов от аугментов
 			d = aug_apply_to_stats(name, d)
-
+			d = cond_apply_to_stats(name, d) 
 			d["nick"] = d.get("nick", name)
 			d["team"] = "hero"
 			d["hp"] = d.get("max_hp", d.get("max_health", 100))

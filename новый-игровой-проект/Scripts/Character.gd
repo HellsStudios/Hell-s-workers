@@ -22,8 +22,12 @@ var effects: Array = []
 	"value": 0,
 	"max": 0
 }
+@onready var hitbox: Area2D = $Hitbox
 signal mechanic_changed
 # Семь смертных грехов – значения от 0 до 100, например
+@export var main_anim: String = "idle"
+@export var additional_anim: String = "idle"
+@export var spec_anim: String = "idle"
 @export var sin_pride: int = 0
 @export var sin_greed: int = 0
 @export var sin_lust: int = 0
@@ -31,12 +35,12 @@ signal mechanic_changed
 @export var sin_gluttony: int = 0
 @export var sin_wrath: int = 0
 @export var sin_sloth: int = 0
-
+@export var count_anim: int = 10
 @export var DEBUG_EFFECTS := false
 var dodge_window: float = 0.12
 var block_window: float = 0.18
 var block_reduce: float = 0.5  # 0.5 = блок режет урон наполовину при «успехе»
-
+var _click_locked: bool = false
 # Список способностей (будет заполнен позже)
 var abilities: Array = []
 
@@ -305,17 +309,46 @@ func pay_coins(req: Dictionary) -> void:
 	print("[COINS] paid ", req, " -> ", ether_coins)
 	emit_signal("coins_changed")
 
-
+var count = 0
 func _ready():
+	if is_instance_valid(hitbox) and not hitbox.is_connected("input_event", Callable(self, "_on_hitbox_input_event")):
+		hitbox.connect("input_event", Callable(self, "_on_hitbox_input_event"))
+	if not anim.is_connected("animation_finished", Callable(self, "_on_anim_finished")):
+		anim.connect("animation_finished", Callable(self, "_on_anim_finished"))
 	if String(nick) == "Sally":
 		if not has_meta("sally_insp"):   set_meta("sally_insp", 0)
 		if not has_meta("sally_golden"): set_meta("sally_golden", false)
 	_init_abilities()
-	play_idle()
-
+	if main_anim == "idle":
+		play_idle()
+	else:
+		play_custom()
+	if is_instance_valid(hitbox):
+		hitbox.input_pickable = true
+		if not hitbox.is_connected("input_event", Callable(self, "_on_hitbox_input_event")):
+			hitbox.connect("input_event", Callable(self, "_on_hitbox_input_event"))
+	
 @export var carry_slots_max := 3
 @export var forbidden_categories: Array[String] = []
 var pack: Dictionary = {}  # id -> количество (то, что ВЗЯТО в бой)
+
+
+
+# Вызывать отсюда всю «комплексную» логику, которая раньше была в _on_hitbox_input_event
+func handle_click() -> void:
+	get_viewport().set_input_as_handled()
+	count = count + 1# Запускаем нужную (кастомную) анимацию персонажа
+	if count == count_anim:
+		play_custom3()
+		count = 0
+	else:
+		play_custom2()
+
+
+func _on_hitbox_input_event(_vp, event: InputEvent, _shape_idx: int) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		handle_click()
+
 
 func can_use_item(id: String) -> bool:
 	var def := GameManager.get_item_def(id)
@@ -363,6 +396,29 @@ func play_idle() -> void:
 	# Проверяем, не играет ли уже Idle
 	if anim.current_animation != "idle":
 		anim.play("idle")
+		
+func _on_anim_finished(name: StringName) -> void:
+	# Если закончилась та, что запускали из play_custom2 или play_custom3 — вернуться к main_anim
+	if name == additional_anim or name == spec_anim:
+		play_custom()
+		_click_locked = false
+
+func play_custom() -> void:
+	# Проверяем, не играет ли уже Idle
+	if anim.current_animation != main_anim:
+		anim.play(main_anim)
+
+func play_custom2() -> void:
+	# Проверяем, не играет ли уже Idle
+	if anim.current_animation != additional_anim:
+		_click_locked = true
+		anim.play(additional_anim)
+		
+func play_custom3() -> void:
+	# Проверяем, не играет ли уже Idle
+	if anim.current_animation != spec_anim:
+		_click_locked = true
+		anim.play(spec_anim)
 	
 func _anim_hit_event() -> void:
 	emit_signal("hit_event")
