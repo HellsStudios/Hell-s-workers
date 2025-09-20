@@ -1,9 +1,9 @@
 extends Camera2D
 
 const LIMIT_LEFT   := 0
-const LIMIT_RIGHT  := 1000
-const LIMIT_TOP    := 0
-const LIMIT_BOTTOM := 500
+const LIMIT_RIGHT  := 600
+const LIMIT_TOP    := 300
+const LIMIT_BOTTOM := 375
 
 var dragging: bool = false
 var last_mouse_pos: Vector2 = Vector2.ZERO

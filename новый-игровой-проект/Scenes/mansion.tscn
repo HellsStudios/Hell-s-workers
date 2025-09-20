@@ -1,7 +1,8 @@
-[gd_scene load_steps=12 format=3 uid="uid://cdw4xi8jdmhhr"]
+[gd_scene load_steps=13 format=3 uid="uid://cdw4xi8jdmhhr"]
 
 [ext_resource type="Script" uid="uid://2v4dau4mmixv" path="res://Scripts/mansion.gd" id="1_5jwi0"]
 [ext_resource type="Script" uid="uid://brs16ogkadj40" path="res://Scripts/camera_2d.gd" id="2_exq5i"]
+[ext_resource type="Texture2D" uid="uid://ohyxlv3wb8x8" path="res://Assets/bg/house.png" id="3_bn8ty"]
 [ext_resource type="Script" uid="uid://c7oate8n5pgwg" path="res://Scenes/management_menu.gd" id="3_e6st1"]
 [ext_resource type="Texture2D" uid="uid://b1ii2cvhql6n" path="res://Assets/bg/berit_room.png" id="3_umc7y"]
 [ext_resource type="PackedScene" uid="uid://cwsmxeu86tky5" path="res://Scenes/Cutscene Berit.tscn" id="4_ek7eh"]
@@ -26,6 +27,7 @@ height = 50
 script = ExtResource("1_5jwi0")
 
 [node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(288, 328)
 limit_left = 0
 limit_top = 0
 limit_right = 3000
@@ -38,8 +40,13 @@ drag_right_margin = 1.0
 drag_bottom_margin = 1.0
 script = ExtResource("2_exq5i")
 
+[node name="BG" type="Sprite2D" parent="Camera2D"]
+position = Vector2(688, 208)
+scale = Vector2(1, 1)
+texture = ExtResource("3_bn8ty")
+
 [node name="Room2" type="Area2D" parent="Camera2D" groups=["rooms"]]
-position = Vector2(600, 104)
+position = Vector2(771.11, 204.355)
 collision_mask = 0
 
 [node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room2"]
@@ -50,7 +57,7 @@ texture = ExtResource("3_umc7y")
 shape = SubResource("RectangleShape2D_umc7y")
 
 [node name="Room3" type="Area2D" parent="Camera2D" groups=["rooms"]]
-position = Vector2(1000, 104)
+position = Vector2(181.888, 467.99)
 
 [node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room3"]
 scale = Vector2(0.2, 0.2)
@@ -63,7 +70,7 @@ shape = SubResource("RectangleShape2D_umc7y")
 z_index = 1
 
 [node name="Room1" type="Area2D" parent="Camera2D" groups=["rooms"]]
-position = Vector2(200, 104)
+position = Vector2(-215.13, 468.1)
 
 [node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room1"]
 scale = Vector2(0.2, 0.2)
@@ -82,7 +89,7 @@ range_z_max = 0
 [node name="Clickables" type="Node2D" parent="Camera2D"]
 
 [node name="Berit_injury" parent="Camera2D/Clickables" instance=ExtResource("4_ek7eh")]
-position = Vector2(490.435, 95.925)
+position = Vector2(659.63, 195.98)
 scale = Vector2(0.57, 0.645)
 main_anim = "Sleep"
 additional_anim = "Sleep_cozy"

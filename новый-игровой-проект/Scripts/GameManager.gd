@@ -2587,6 +2587,7 @@ func add_condition(hero: String, id: String, days := 0, phases := 0) -> void:
 	hero_conditions[hero] = arr
 	print("[COND][ADD] hero=", hero, " +", id, " until D", exp_day, " P", exp_phase, " | store=", hero_conditions[hero])
 	emit_signal("conditions_changed", hero)
+	_clamp_current_to_max_all()
 
 func remove_condition(hero: String, id: String) -> void:
 	var arr: Array = hero_conditions.get(hero, [])
@@ -2597,6 +2598,7 @@ func remove_condition(hero: String, id: String) -> void:
 	hero_conditions[hero] = out
 	print("[COND][DEL] hero=", hero, " -", id, " | store=", hero_conditions[hero])
 	emit_signal("conditions_changed", hero)
+	_clamp_current_to_max_all()
 
 func get_active_conditions(hero: String) -> Array:
 	return (hero_conditions.get(hero, []) as Array).duplicate(true)
@@ -2608,15 +2610,26 @@ func cond_apply_to_stats(hero_name: String, base_stats: Dictionary) -> Dictionar
 		var def := get_condition_def(id)
 		if typeof(def) != TYPE_DICTIONARY: continue
 		var sm: Dictionary = def.get("stat_mod", {})
+
 		for k in sm.keys():
 			if k.ends_with("_pct"):
-				# процентные модификаторы, например max_health_pct
 				var stat_key = k.substr(0, k.length() - 4)
 				var mult := 1.0 + float(sm[k])
-				out[stat_key] = int(round(float(out.get(stat_key, 0)) * mult))
+
+				# --- НОВОЕ: поддержка алиасов max_hp/max_health
+				var target_key = stat_key
+				if not out.has(target_key):
+					if stat_key == "max_hp" and out.has("max_health"):
+						target_key = "max_health"
+					elif stat_key == "max_health" and out.has("max_hp"):
+						target_key = "max_hp"
+
+				var base_val := int(out.get(target_key, 0))
+				out[target_key] = int(round(float(base_val) * mult))
 			else:
 				out[k] = int(out.get(k, 0)) + int(sm[k])
 	return out
+
 
 func get_cond_start_effects(hero_name: String) -> Array:
 	var arr: Array = []
@@ -2652,7 +2665,12 @@ func _tick_conditions_and_phase_effects() -> void:
 		hero_conditions[hero] = keep
 	if changed:
 		emit_signal("conditions_changed", "")
+		_clamp_current_to_max_all()
 
+func _clamp_current_to_max_all() -> void:
+	for hero in party_names:
+		for k in ["hp","mana","stamina"]:
+			set_res_cur(hero, k, res_cur(hero, k))  # set_res_cur сам зажимает к res_max()
 
 func mood_value(hero: String) -> int:
 	return clampi(int(hero_mood.get(hero, 50)), 0, 100)
@@ -2666,6 +2684,9 @@ func mood_title(v: int) -> String:
 
 func res_max(hero: String, key: String) -> int:
 	var d: Dictionary = all_heroes.get(hero, {})
+	# учесть аугменты и кондинции на лету
+	d = aug_apply_to_stats(hero, d)
+	d = cond_apply_to_stats(hero, d)
 	match key:
 		"hp":      return int(d.get("max_hp", d.get("max_health", 100)))
 		"mana":    return int(d.get("max_mana", 0))

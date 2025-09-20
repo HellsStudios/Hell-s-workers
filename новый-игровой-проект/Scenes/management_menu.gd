@@ -463,6 +463,7 @@ func open_centered() -> void:
 	var vr := Vector2i(1920, 1080)
 	position = Vector2i((vr.x - size.x) / 2, (vr.y - size.y) / 2)
 	grab_focus()
+	call_deferred("refresh_all")
 
 func _on_close_pressed() -> void:
 	_dbg("Close button -> hide()")
@@ -570,17 +571,44 @@ func _refresh_hero_bag(drop: OptionButton, list: ItemList) -> void:
 	if list.item_count > 0:
 		list.select(0)
 
+func refresh_all() -> void:
+	if not is_inside_tree(): return
+	# Инвентарь
+	_refresh_base()
+	_on_hero_changed_inventory(heroes_drop.get_selected())
+	# Вкладка экипировки (бары HP/MP/STA, статы, кондинции и т.п.)
+	_refresh_eq_tab()
+	# Квесты / Архив
+	_refresh_quests()
+	_refresh_archive()
+	# Припасы
+	_refresh_supplies()
+	# Аугменты
+	_refresh_aug_tab()
 
 func _refresh_hero_stats(label: Label, hero_name: String) -> void:
 	if not GameManager.all_heroes.has(hero_name):
-		label.text = ""; _dbg("stats: hero '%s' not found in all_heroes" % hero_name); return
+		label.text = ""
+		return
+
 	var d: Dictionary = GameManager.all_heroes[hero_name]
-	var hp := int(d.get("max_health", d.get("max_hp", 100)))
-	var mp := int(d.get("max_mana", 0))
-	var atk:= int(d.get("attack", 10))
-	var spd:= int(d.get("speed", 10))
-	label.text = "HP: %d   MP: %d   ATK: %d   SPD: %d" % [hp, mp, atk, spd]
-	_dbg("stats('%s'): %s" % [hero_name, label.text])
+
+	var hp_cur := GameManager.res_cur(hero_name, "hp")
+	var hp_max := GameManager.res_max(hero_name, "hp")
+
+	# Если хочешь показывать только максимум MP (как было) —
+	# оставь одну строку ниже и удали mp_cur.
+	var mp_cur := GameManager.res_cur(hero_name, "mana")
+	var mp_max := GameManager.res_max(hero_name, "mana")
+
+	var atk := int(d.get("attack", 10))
+	var spd := int(d.get("speed", 10))
+
+	# Вариант 1: как просили — HP текущие/макс, MP тоже текущие/макс
+	label.text = "HP: %d/%d   MP: %d/%d   ATK: %d   SPD: %d" % [hp_cur, hp_max, mp_cur, mp_max, atk, spd]
+
+	# Вариант 2 (как у тебя на скрине) — MP только максимум:
+	# label.text = "HP: %d/%d   MP: %d   ATK: %d   SPD: %d" % [hp_cur, hp_max, mp_max, atk, spd]
 
 # ================== inventory tab: events ==================
 func _on_hero_changed_inventory(_idx: int) -> void:
