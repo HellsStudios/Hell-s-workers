@@ -17,8 +17,131 @@ var _cam_phys_prev := true
 @onready var manage_menu: PopupPanel = $UI/ManagementMenu
 @onready var manage_btn: Button = $UI/TopBar/ManageButton
 @onready var resource: Label = $UI/PanelResources/ResourcesLabel
-
+const COND_BUSY: StringName = "busy"
 @onready var end_day_confirm: ConfirmationDialog = $UI/EndDayConfirm
+@onready var Clickables := $Camera2D/Clickables
+const CONDITION_PRIORITY := {
+	COND_BUSY: 100,           # Занят — скрыть всё
+	"injury": 80,
+	"fatigue": 70,
+	"hungry": 60,
+	"sad": 50,
+	"weird_day": 40,
+	"default": 0              # если ничего не подошло
+}
+
+func _build_click_index() -> void:
+	_click_idx.clear()
+	_click_all_by_char.clear()
+
+	for node in Clickables.get_children():
+		if not (node is Node): # фильтр на всякий случай
+			continue
+		var name_str := String(node.name)
+		var sep := name_str.rfind("_")
+		if sep == -1:
+			continue
+		var char_name := name_str.substr(0, sep)
+		var cond_key  := name_str.substr(sep + 1, name_str.length())
+
+		if not _click_idx.has(char_name):
+			_click_idx[char_name] = {}
+			_click_all_by_char[char_name] = []
+
+		_click_idx[char_name][cond_key] = node
+		_click_all_by_char[char_name].append(node)
+
+		# по умолчанию всё скрыто; будем включать нужное
+		_set_visible_safe(node, false)
+		print("[MANSION][IDX] summary:")
+		for k in _click_idx.keys():
+			print("   ", k, ":", _click_idx[k].keys())
+
+func _set_visible_safe(n: Node, v: bool) -> void:
+	if "visible" in n:
+		n.visible = v
+	elif n is CanvasItem:
+		(n as CanvasItem).visible = v
+
+func update_all_clickables() -> void:
+	for char_name in _click_idx.keys():
+		var conds: Array[StringName] = _get_conditions_for(char_name)
+		_apply_clickables_for(char_name, conds)
+
+func _get_conditions_for(char_name: String) -> Array[StringName]:
+	# Автолоад "GameManager" доступен как глобальный объект.
+	if typeof(GameManager) == TYPE_OBJECT and GameManager.has_method("get_conditions_for"):
+		var res = GameManager.get_conditions_for(char_name)
+		print("[MANSION][CALL] get_conditions_for('%s') -> %s" % [char_name, str(res)])
+		return res
+	print("[MANSION][CALL] GameManager missing -> []")
+	return []
+
+func _on_conditions_changed(char_name: String) -> void:
+	print("[MANSION][EV] conditions_changed hero='", char_name, "'")
+	if char_name == "":
+		update_all_clickables()
+		return
+	var conds := _get_conditions_for(char_name)
+	_apply_clickables_for(char_name, conds)
+
+func _apply_clickables_for(char_name: String, conds: Array) -> void:
+	print("[MANSION][APPLY] hero=", char_name, " conds=", conds)
+
+	# 1) BUSY — скрыть всё
+	var has_busy := false
+	for v in conds:
+		if String(v) == "busy":
+			has_busy = true; break
+	if has_busy:
+		print("[MANSION][APPLY]  -> BUSY: hide all for ", char_name)
+		_hide_all_for(char_name)
+		return
+
+	# 2) Выбираем по приоритету
+	var chosen := ""
+	var best := -999
+	for c in conds:
+		var c_str := String(c)
+		var pr := 0
+		if CONDITION_PRIORITY.has(c_str): pr = int(CONDITION_PRIORITY[c_str])
+		else: pr = 1
+		if pr > best and _has_click_node(char_name, c_str):
+			best = pr
+			chosen = c_str
+			print("[MANSION][APPLY]  candidate:", c_str, " pr=", pr)
+
+	# 3) Fallback: default
+	if chosen == "":
+		var has_def := _has_click_node(char_name, "default")
+		print("[MANSION][APPLY]  no candidate; default exists=", has_def)
+		if has_def:
+			chosen = "default"
+
+	print("[MANSION][APPLY]  SHOW ->", char_name, "/", chosen)
+	_show_only(char_name, chosen)
+
+
+func _hide_all_for(char_name: String) -> void:
+	if not _click_all_by_char.has(char_name):
+		return
+	for n in _click_all_by_char[char_name]:
+		_set_visible_safe(n, false)
+
+func _has_click_node(char_name: String, cond_key: String) -> bool:
+	return _click_idx.has(char_name) and _click_idx[char_name].has(cond_key)
+
+func _show_only(char_name: String, cond_key: String) -> void:
+	_hide_all_for(char_name)
+	if cond_key == "":
+		return
+	if _has_click_node(char_name, cond_key):
+		_set_visible_safe(_click_idx[char_name][cond_key], true)
+
+# { "Berit": { "hungry": Node, "injury": Node, "default": Node, ... }, ... }
+var _click_idx: Dictionary = {}
+# { "Berit": [Node, Node, ...] } — для быстрого скрытия всех
+var _click_all_by_char: Dictionary = {}
 
 func _on_room_1_input_event(_vp, event: InputEvent, _shape_idx: int) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -97,6 +220,14 @@ func _on_ToTimelineButton_pressed() -> void:
 
 
 func _ready() -> void:
+		# 1) построить индекс кликабельных узлов и сразу всё спрятать
+	_build_click_index()
+	update_all_clickables()  # первичная отрисовка
+
+	# 2) подписка на сигнал и моментальный «пинок» на обновление
+	if not GameManager.is_connected("conditions_changed", _on_conditions_changed):
+		GameManager.conditions_changed.connect(_on_conditions_changed)
+	_on_conditions_changed("")  # обновить всех
 	PauseManager.set_mode(Pause.Mode.GENERIC)
 	set_process(true)  # нужно для таймового логирования
 	# ... остальное как у тебя было ...

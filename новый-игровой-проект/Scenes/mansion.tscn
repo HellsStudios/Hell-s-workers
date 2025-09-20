@@ -49,33 +49,6 @@ texture = ExtResource("3_umc7y")
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room2"]
 shape = SubResource("RectangleShape2D_umc7y")
 
-[node name="Berit_Sleep" parent="Camera2D/Room2" instance=ExtResource("4_ek7eh")]
-position = Vector2(-109.565, -8.075)
-scale = Vector2(0.57, 0.645)
-main_anim = "Sleep"
-additional_anim = "Sleep_cozy"
-spec_anim = "Hard_awake"
-
-[node name="Hitbox" type="Area2D" parent="Camera2D/Room2/Berit_Sleep"]
-collision_layer = 128
-collision_mask = 0
-collision_priority = 100.0
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room2/Berit_Sleep/Hitbox"]
-position = Vector2(9.763, 49.7287)
-shape = SubResource("RectangleShape2D_ek7eh")
-
-[node name="StopBG" type="Control" parent="Camera2D/Room2/Berit_Sleep"]
-layout_mode = 3
-anchors_preset = 0
-offset_left = -131.0
-offset_top = -37.0
-offset_right = 150.0
-offset_bottom = 137.0
-mouse_filter = 1
-script = ExtResource("5_jpagq")
-character_path = NodePath("..")
-
 [node name="Room3" type="Area2D" parent="Camera2D" groups=["rooms"]]
 position = Vector2(1000, 104)
 
@@ -105,6 +78,35 @@ color = Color(1, 1, 0.0196078, 1)
 energy = 0.5
 range_z_min = 0
 range_z_max = 0
+
+[node name="Clickables" type="Node2D" parent="Camera2D"]
+
+[node name="Berit_injury" parent="Camera2D/Clickables" instance=ExtResource("4_ek7eh")]
+position = Vector2(490.435, 95.925)
+scale = Vector2(0.57, 0.645)
+main_anim = "Sleep"
+additional_anim = "Sleep_cozy"
+spec_anim = "Hard_awake"
+
+[node name="Hitbox" type="Area2D" parent="Camera2D/Clickables/Berit_injury"]
+collision_layer = 128
+collision_mask = 0
+collision_priority = 100.0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Clickables/Berit_injury/Hitbox"]
+position = Vector2(9.763, 49.7287)
+shape = SubResource("RectangleShape2D_ek7eh")
+
+[node name="StopBG" type="Control" parent="Camera2D/Clickables/Berit_injury"]
+layout_mode = 3
+anchors_preset = 0
+offset_left = -131.0
+offset_top = -37.0
+offset_right = 150.0
+offset_bottom = 137.0
+mouse_filter = 1
+script = ExtResource("5_jpagq")
+character_path = NodePath("..")
 
 [node name="UI" type="CanvasLayer" parent="."]
 

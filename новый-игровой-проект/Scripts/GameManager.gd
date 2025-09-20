@@ -1446,7 +1446,7 @@ const QUALS_JSON      := "res://Data/qualifications.json"
 
 var conditions_db: Dictionary = {}          # id -> прототип
 var hero_conditions: Dictionary = {}        # name -> Array[{id, expire_day?, expire_phase?}]
-signal conditions_changed
+signal conditions_changed(hero: String)
 
 var quals_db: Dictionary = {}               # id -> {name,icon?}
 var qual_rates: Dictionary = {}             # hero -> {qual:mult}
@@ -2428,6 +2428,66 @@ func culling_spoiled_food() -> void:
 	emit_signal("cooking_changed")
 
 
+const COND_BUSY: StringName = "busy"  # «Занят» — специальная кондинция для UI
+
+# Занят ли герой прямо сейчас (идёт задача по расписанию?)
+func is_hero_busy(hero: String) -> bool:
+	var now := int(timeline_clock.get("slot", 0))
+	for rec in scheduled.get(hero, []):
+		if typeof(rec) != TYPE_DICTIONARY: 
+			continue
+		var st := int(rec.get("start", 0))
+		var en := st + int(rec.get("duration", 0))
+		if now >= st and now < en:
+			print("[COND][BUSY] hero=", hero, " now=", now, " in [", st, ";", en, ")")
+			return true
+	return false
+
+
+# Список КЛЮЧЕЙ активных кондинций героя + возможно «busy»
+# Пример возвращаемого массива: ["hungry", "sad"] или ["busy"] или []
+func get_conditions_for(hero: String) -> Array[StringName]:
+	var out: Array[StringName] = []
+
+	# 1) обычные кондинции из хранилища
+	for e in hero_conditions.get(hero, []):
+		if typeof(e) == TYPE_DICTIONARY:
+			var cid_str := String(e.get("id", ""))
+			if cid_str != "":
+				out.append(StringName(cid_str))  # ВАЖНО: явная конверсия в StringName
+
+	# 2) «занят»
+	if is_hero_busy(hero):
+		out.append(COND_BUSY)
+
+	# 3) убрать дубли (с учётом StringName) безопасно
+	var seen := {}
+	var uniq: Array[StringName] = []
+	for v in out:
+		var k := String(v)  # ключ в словаре как String
+		if not seen.has(k):
+			seen[k] = true
+			uniq.append(v)
+
+	# диагностика:
+	print("[COND][LIST] hero=", hero, " -> ", uniq)
+	return uniq
+
+func _unique_array(a: Array) -> Array:
+	var seen := {}
+	var res: Array = []
+	for v in a:
+		if not seen.has(v):
+			seen[v] = true
+			res.append(v)
+	return res
+
+# Удобно для массового обновления UI: имя -> массив ключей
+func get_conditions_for_all() -> Dictionary:
+	var map: Dictionary = {}
+	for name in party_names:
+		map[name] = get_conditions_for(String(name))
+	return map
 
 
 func _ready() -> void:
@@ -2505,7 +2565,7 @@ func load_conditions_db(path: String = CONDITIONS_JSON) -> void:
 		var j = JSON.parse_string(s)
 		if typeof(j) == TYPE_DICTIONARY:
 			conditions_db = j.get("conditions", {})
-	emit_signal("conditions_changed")
+	emit_signal("conditions_changed", "")
 
 func get_condition_def(id: String) -> Dictionary:
 	return conditions_db.get(id, {})
@@ -2525,7 +2585,8 @@ func add_condition(hero: String, id: String, days := 0, phases := 0) -> void:
 		exp_day += 1
 	arr.append({"id": id, "expire_day": exp_day, "expire_phase": exp_phase})
 	hero_conditions[hero] = arr
-	emit_signal("conditions_changed")
+	print("[COND][ADD] hero=", hero, " +", id, " until D", exp_day, " P", exp_phase, " | store=", hero_conditions[hero])
+	emit_signal("conditions_changed", hero)
 
 func remove_condition(hero: String, id: String) -> void:
 	var arr: Array = hero_conditions.get(hero, [])
@@ -2534,7 +2595,8 @@ func remove_condition(hero: String, id: String) -> void:
 		if String(e.get("id","")) != id:
 			out.append(e)
 	hero_conditions[hero] = out
-	emit_signal("conditions_changed")
+	print("[COND][DEL] hero=", hero, " -", id, " | store=", hero_conditions[hero])
+	emit_signal("conditions_changed", hero)
 
 func get_active_conditions(hero: String) -> Array:
 	return (hero_conditions.get(hero, []) as Array).duplicate(true)
@@ -2589,7 +2651,7 @@ func _tick_conditions_and_phase_effects() -> void:
 				changed = true
 		hero_conditions[hero] = keep
 	if changed:
-		emit_signal("conditions_changed")
+		emit_signal("conditions_changed", "")
 
 
 func mood_value(hero: String) -> int:

@@ -527,13 +527,16 @@ func _advance_one_slot() -> void:
 		return
 	# события в слоте ...
 	_check_task_finishes(current_slot)
-	
+
 func _on_task_finished(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
 	_clear_event_buttons()
 	_redraw_schedule()
 	_popup_queue.append({"kind":"finish","hero":hero,"inst":inst_id,"success":success,"rewards":rewards})
 	_try_show_popup()
 	_event_seen.erase(inst_id)
+	# busy снялся (слот ушёл за конец) — дёргаем обновление UI
+	if GameManager.has_signal("conditions_changed"):
+		GameManager.emit_signal("conditions_changed", hero)
 
 
 func _check_task_finishes(slot: int) -> void:
@@ -552,6 +555,9 @@ func _check_task_finishes(slot: int) -> void:
 
 func _on_task_started(hero: String, inst_id: int) -> void:
 	print("[TL] START  hero=", hero, " inst=", inst_id)
+	# busy стал true (по слоту) — дёргаем обновление UI
+	if GameManager.has_signal("conditions_changed"):
+		GameManager.emit_signal("conditions_changed", hero)
 
 
 func _on_task_completed(hero: String, inst_id: int, outcome: Dictionary) -> void:
