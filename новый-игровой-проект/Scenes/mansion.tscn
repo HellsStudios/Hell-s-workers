@@ -43,7 +43,6 @@ script = ExtResource("2_exq5i")
 
 [node name="BG" type="Sprite2D" parent="Camera2D"]
 position = Vector2(1375, 600)
-scale = Vector2(1, 1)
 texture = ExtResource("3_bn8ty")
 
 [node name="Room2" type="Area2D" parent="Camera2D" groups=["rooms"]]
@@ -89,10 +88,9 @@ range_z_min = 0
 range_z_max = 0
 
 [node name="Clickables" type="Node2D" parent="Camera2D"]
-position = Vector2(687, 392)
 
 [node name="Berit_injury" parent="Camera2D/Clickables" instance=ExtResource("4_ek7eh")]
-position = Vector2(659.63, 195.98)
+position = Vector2(1346.63, 587.98)
 scale = Vector2(0.57, 0.645)
 main_anim = "Sleep"
 additional_anim = "Sleep_cozy"
@@ -117,6 +115,9 @@ offset_bottom = 137.0
 mouse_filter = 1
 script = ExtResource("5_jpagq")
 character_path = NodePath("..")
+
+[node name="Marker2D" type="Marker2D" parent="Camera2D/Clickables" groups=["clue_point"]]
+position = Vector2(1560, 936)
 
 [node name="UI" type="CanvasLayer" parent="."]
 

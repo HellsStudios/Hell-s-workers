@@ -147,6 +147,97 @@ signal day_ended(day:int)     # когда уходим спать
 
 var _path_index: Dictionary = {}  # lowercased full path -> real-cased full path
 
+# ─── КЛЮ ──────────────────────────────────────────────────────────────
+signal clue_spawn_requested(scene_path: String)  # Mansion загрузит и заспавнит
+signal clue_clear_requested()
+
+const CLUE_SCENE_PATH := "res://Scenes/clue.tscn"   # путь к твоей Clue.tscn
+var   CLUE_BASE_CHANCE := 1.00                      # 30% шанс утром
+const CLUE_DIALOG_FIRST  := "clue_first_time"       # id в dialogs.json
+const CLUE_DIALOG_EVERY5 := "clue_every_5th"
+
+var _clue_active := false
+var _clue_clicks_total := 0
+var _clue_seen_first := false
+
+func clue_notify_spawned() -> void:
+	_clue_active = true
+
+func clue_notify_picked() -> void:
+	if not _clue_active:
+		return
+	_clue_active = false
+	_clue_clicks_total += 1
+
+	if not _clue_seen_first and dialog_exists(CLUE_DIALOG_FIRST):
+		_clue_seen_first = true
+		play_dialog(CLUE_DIALOG_FIRST)
+
+	if (_clue_clicks_total % 5) == 0 and dialog_exists(CLUE_DIALOG_EVERY5):
+		play_dialog(CLUE_DIALOG_EVERY5)
+
+func clue_notify_vanished() -> void:
+	_clue_active = false
+
+func _clue_resolve_unclaimed() -> void:
+	if _clue_active:
+		if has_signal("clue_clear_requested"):
+			clue_clear_requested.emit()
+		_clue_apply_penalty()
+	_clue_active = false
+
+func _clue_maybe_spawn() -> void:
+	if CLUE_SCENE_PATH == "" or not ResourceLoader.exists(CLUE_SCENE_PATH):
+		return
+	if randf() <= float(CLUE_BASE_CHANCE):
+		clue_spawn_requested.emit(CLUE_SCENE_PATH)
+
+func _clue_apply_penalty() -> void:
+	var removed := 0
+	if (randi() % 2) == 0:
+		removed += _clue_take_random_from_supplies(1 + randi()%2) # 1..2
+		removed += _clue_take_random_from_base(1)
+	else:
+		removed += _clue_take_random_from_base(1 + randi()%2)
+		removed += _clue_take_random_from_supplies(1)
+	if removed > 0:
+		Toasts.warn("Нечто в особняке похозяйничало ночью… кое-что пропало.")
+
+func _clue_take_random_from_supplies(n: int) -> int:
+	if n <= 0 or supplies_inventory.is_empty(): return 0
+	var removed := 0
+	var keys := supplies_inventory.keys()
+	for i in n:
+		if keys.is_empty(): break
+		var sid := String(keys[randi() % keys.size()])
+		var have := int(supplies_inventory.get(sid, 0))
+		if have > 0:
+			supplies_inventory[sid] = have - 1
+			removed += 1
+			if int(supplies_inventory[sid]) <= 0:
+				supplies_inventory.erase(sid)
+			emit_signal("supplies_changed")
+		keys = supplies_inventory.keys()
+	return removed
+
+func _clue_take_random_from_base(n: int) -> int:
+	if n <= 0 or base_inventory.is_empty(): return 0
+	var removed := 0
+	var keys := base_inventory.keys()
+	for i in n:
+		if keys.is_empty(): break
+		var iid := String(keys[randi() % keys.size()])
+		var have := int(base_inventory.get(iid, 0))
+		if have > 0:
+			base_inventory[iid] = have - 1
+			removed += 1
+			if int(base_inventory[iid]) <= 0:
+				base_inventory.erase(iid)
+		keys = base_inventory.keys()
+	return removed
+
+
+
 func _build_path_index() -> void:
 	_path_index.clear()
 	var stack := ["res://"]
@@ -224,6 +315,9 @@ func start_new_day() -> void:
 	_apply_auto_conditions_at_day_start()
 	_tick_conditions_and_phase_effects()
 	emit_signal("day_started", day)
+	_clue_resolve_unclaimed()   # штраф, если не кликнули вчерашнюю
+	_clue_maybe_spawn()         # шанс заспавнить новую
+
 
 # === Конец дня (с диалогом или без него вызывается снаружи)
 func end_day() -> void:

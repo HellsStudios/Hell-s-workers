@@ -20,6 +20,8 @@ var _cam_phys_prev := true
 const COND_BUSY: StringName = "busy"
 @onready var end_day_confirm: ConfirmationDialog = $UI/EndDayConfirm
 @onready var Clickables := $Camera2D/Clickables
+@onready var clue_holder: Node = Clickables      # положим Клю туда же, где и кликаблсы
+var _active_clue: Node2D = null                  # текущая инстанция
 const CONDITION_PRIORITY := {
 	COND_BUSY: 100,           # Занят — скрыть всё
 	"injury": 80,
@@ -29,6 +31,59 @@ const CONDITION_PRIORITY := {
 	"weird_day": 40,
 	"default": 0              # если ничего не подошло
 }
+
+func _clue_spawn_points() -> Array:
+	var pts: Array = []
+	for n in Clickables.get_children():
+		if n.is_in_group("clue_point"):
+			pts.append(n)
+	return pts
+
+func _clue_despawn_local() -> void:
+	if is_instance_valid(_active_clue):
+		_active_clue.queue_free()
+	_active_clue = null
+
+func _clue_spawn_local(scene_path: String) -> void:
+	if is_instance_valid(_active_clue): return
+	if scene_path == "" or not ResourceLoader.exists(scene_path): return
+
+	var pts := _clue_spawn_points()
+	if pts.is_empty():
+		push_warning("[Mansion][Clue] Нет точек с группой 'clue_point' под Clickables")
+		return
+
+	var scn := load(scene_path)
+	var node = scn.instantiate()
+	var p = pts[randi() % pts.size()]
+
+	if p is Node2D and node is Node2D:
+		(node as Node2D).global_position = (p as Node2D).global_position
+
+	Clickables.add_child(node)
+	_active_clue = node
+
+	# уведомляем GM
+	GameManager.clue_notify_spawned()
+
+	# сигналы
+	if node.has_signal("picked"):
+		node.picked.connect(func():
+			GameManager.clue_notify_picked()
+		)
+	if node.has_signal("vanished"):
+		node.vanished.connect(func():
+			if _active_clue == node:
+				_active_clue = null
+			GameManager.clue_notify_vanished()
+		)
+
+	# на всякий — если у Clue нет AnimationPlayer.spawn, можно подсветить появление
+	if node.has_node("AnimationPlayer"):
+		var ap: AnimationPlayer = node.get_node("AnimationPlayer")
+		if ap and ap.has_animation("spawn"):
+			ap.play("spawn")
+
 
 func _build_click_index() -> void:
 	_click_idx.clear()
@@ -259,6 +314,18 @@ func _ready() -> void:
 	# на всякий, если есть popup_hide в твоей версии:
 	if end_day_confirm.has_signal("popup_hide") and not end_day_confirm.popup_hide.is_connected(_on_end_day_closed):
 		end_day_confirm.popup_hide.connect(_on_end_day_closed)
+		# ── CLUE: подписки на запросы от GameManager
+	if not GameManager.is_connected("clue_spawn_requested", _on_clue_spawn_requested):
+		GameManager.clue_spawn_requested.connect(_on_clue_spawn_requested)
+	if not GameManager.is_connected("clue_clear_requested", _on_clue_clear_requested):
+		GameManager.clue_clear_requested.connect(_on_clue_clear_requested)
+
+func _on_clue_spawn_requested(scene_path: String) -> void:
+	_clue_despawn_local()
+	_clue_spawn_local(scene_path)
+
+func _on_clue_clear_requested() -> void:
+	_clue_despawn_local()
 
 func _on_end_day_closed() -> void:
 	_fix_stuck_mouse()
