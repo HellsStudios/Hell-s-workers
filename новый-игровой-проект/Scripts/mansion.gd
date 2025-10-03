@@ -2,6 +2,12 @@ extends Node2D
 
 #var current_day : int = 1  # текущий день, начинаем с 1
 
+# Подменю комнаты 2 (создадим программно, если отсутствует)
+var room2_menu: PopupPanel
+var room2_menu_vbox: VBoxContainer
+
+# Подтверждение «в таймлайн?»
+var timeline_confirm: ConfirmationDialog
 # ====== DBG: мышь/ввод после закрытия попапа ======
 var DBG_LOG := true
 var _dbg_watch_active := false
@@ -200,7 +206,7 @@ var _click_all_by_char: Dictionary = {}
 
 func _on_room_1_input_event(_vp, event: InputEvent, _shape_idx: int) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		cam.set_drag_enabled(false)
+		_cam_set_drag(false)
 		get_viewport().set_input_as_handled()
 		# было: $Room1PopupPanel.open_from(...)
 		# стало:
@@ -259,6 +265,7 @@ func _process(delta: float) -> void:
 			$Camera2D.set_process(_cam_proc_prev)
 			$Camera2D.set_physics_process(_cam_phys_prev)
 	resource.text = str("Крестли: ",int(GameManager.krestli))
+
 			
 @onready var timeline_button := $Camera2D/Room2 # подставь свой путь
 
@@ -319,6 +326,164 @@ func _ready() -> void:
 		GameManager.clue_spawn_requested.connect(_on_clue_spawn_requested)
 	if not GameManager.is_connected("clue_clear_requested", _on_clue_clear_requested):
 		GameManager.clue_clear_requested.connect(_on_clue_clear_requested)
+	if is_instance_valid(manage_menu):
+		if not manage_menu.popup_hide.is_connected(_on_management_menu_popup_hide):
+			manage_menu.popup_hide.connect(_on_management_menu_popup_hide)
+		if manage_menu.has_signal("close_requested") and \
+			(not manage_menu.close_requested.is_connected(_on_management_menu_popup_hide)):
+			manage_menu.close_requested.connect(_on_management_menu_popup_hide)
+
+	_build_room2_menu()
+	_build_timeline_confirm()
+	if cam:
+		cam.cancel_drag()
+		cam.set_drag_enabled(true)
+
+func _on_room2_menu_timeline_pressed() -> void:
+	# Сначала закрываем меню (чтобы не лежало поверх подтверждения)
+	_close_room2_menu()
+
+	# Проверка: уже использован таймлайн сегодня?
+	if GameManager.timeline_used_today:
+		GameManager.toast("Сегодня вы уже занимались делами.")
+		return
+
+	# Покажем подтверждение
+	timeline_confirm.title = "Перейти в таймлайн?"
+	timeline_confirm.dialog_text = "Перейти к таймлайну (дневные дела)?"
+	timeline_confirm.popup_centered_ratio(0.25)
+
+	# камеру пока не дёргаем — окно само перехватит фокус
+
+func _on_timeline_confirmed() -> void:
+	# игрок согласился
+	# у тебя таймлайн — это дневная фаза:
+	GameManager.current_phase = 1
+	# аккуратно возвращаем управление сценой
+	if cam:
+		cam.cancel_drag()
+		_cam_set_drag(true)
+	# и переходим
+	if GameManager.has_method("goto_timeline"):
+		GameManager.goto_timeline()
+	else:
+		get_tree().change_Scene_to_file("res://Scenes/timeline.tscn")
+
+func _on_timeline_closed() -> void:
+	# если закрыли окно, вернём перетаскивание
+	if cam:
+		cam.cancel_drag()
+		_cam_set_drag(true)
+
+
+func _open_room2_menu(mouse_pos: Vector2 = Vector2.ZERO) -> void:
+	if room2_menu == null:
+		return
+
+	if cam:
+		cam.cancel_drag()
+		_cam_set_drag(false)
+	_start_input_quarantine(0.20)
+
+	var vp := get_viewport_rect()
+	var size := Vector2(300, 0)
+	var pos := mouse_pos + Vector2(16, 16)
+	pos.x = clamp(pos.x, 0.0, vp.size.x - size.x)
+	pos.y = clamp(pos.y, 0.0, vp.size.y - 200.0)
+
+	room2_menu_vbox.modulate = Color(1, 1, 1, 0)
+	room2_menu.position = Vector2i(pos) + Vector2i(0, 8)
+	room2_menu.popup()
+
+	var tw := create_tween()
+	tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(room2_menu,      "position",  Vector2i(pos), 0.15)   # позицию tween'им у окна
+	tw.parallel().tween_property(room2_menu_vbox, "modulate:a", 1.0, 0.15) # альфу tween'им у контента
+
+func _ui_blocked() -> bool:
+	return (is_instance_valid(room2_menu) and room2_menu.visible) \
+		or (is_instance_valid(timeline_confirm) and timeline_confirm.visible) \
+		or (is_instance_valid(end_day_confirm) and end_day_confirm.visible) \
+		or (is_instance_valid(manage_menu) and manage_menu.visible)
+
+func _cam_set_drag(v: bool) -> void:
+	if cam:
+		cam.cancel_drag()
+		cam.set_drag_enabled(v)
+
+func _close_room2_menu() -> void:
+	if room2_menu == null or not room2_menu.visible:
+		return
+	var tw := create_tween()
+	tw.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(room2_menu_vbox, "modulate:a", 0.0, 0.12)
+	tw.parallel().tween_property(room2_menu, "position", room2_menu.position + Vector2i(0, 6), 0.12)
+	tw.tween_callback(Callable(room2_menu, "hide"))
+
+	if cam:
+		cam.cancel_drag()
+		_cam_set_drag(true)
+
+
+
+func _build_room2_menu() -> void:
+	# если уже есть в сцене — возьмём, иначе создадим
+	room2_menu = $UI/Room2Menu if has_node("UI/Room2Menu") else null
+	if room2_menu == null:
+		room2_menu = PopupPanel.new()
+		room2_menu.name = "Room2Menu"
+		# ставим в UI-дерево, чтобы было поверх
+		if has_node("UI"):
+			$UI.add_child(room2_menu)
+		else:
+			add_child(room2_menu)
+
+	# Внутренности
+	room2_menu_vbox = VBoxContainer.new()
+	room2_menu_vbox.custom_minimum_size = Vector2(280, 0)
+	room2_menu.add_child(room2_menu_vbox)
+	room2_menu.close_requested.connect(_close_room2_menu)
+	if room2_menu.has_signal("popup_hide") and not room2_menu.popup_hide.is_connected(_close_room2_menu):
+		room2_menu.popup_hide.connect(_close_room2_menu)
+
+	# Кнопка 1: Таймлайн
+	var b_timeline := Button.new()
+	b_timeline.text = "К таймлайну"
+	b_timeline.pressed.connect(_on_room2_menu_timeline_pressed)
+	room2_menu_vbox.add_child(b_timeline)
+
+	# (запас для будущих опций)
+	# var b_something := Button.new()
+	# b_something.text = "Другая опция"
+	# b_something.pressed.connect(_on_room2_menu_other_pressed)
+	# room2_menu_vbox.add_child(b_something)
+
+	# Разделитель + Закрыть
+	var sep := HSeparator.new()
+	room2_menu_vbox.add_child(sep)
+
+	var b_close := Button.new()
+	b_close.text = "Отмена"
+	b_close.pressed.connect(_close_room2_menu)
+	room2_menu_vbox.add_child(b_close)
+
+
+func _build_timeline_confirm() -> void:
+	timeline_confirm = $UI/TimelineConfirm if has_node("UI/TimelineConfirm") else null
+	if timeline_confirm == null:
+		timeline_confirm = ConfirmationDialog.new()
+		timeline_confirm.name = "TimelineConfirm"
+		timeline_confirm.title = "Перейти в таймлайн?"
+		timeline_confirm.dialog_text = "Вы уверены, что хотите перейти на сцену таймлайна?"
+		if has_node("UI"):
+			$UI.add_child(timeline_confirm)
+		else:
+			add_child(timeline_confirm)
+	timeline_confirm.confirmed.connect(_on_timeline_confirmed)
+	if timeline_confirm.has_signal("popup_hide") and not timeline_confirm.popup_hide.is_connected(_on_timeline_closed):
+		timeline_confirm.popup_hide.connect(_on_timeline_closed)
+	timeline_confirm.close_requested.connect(_on_timeline_closed)
+
 
 func _on_clue_spawn_requested(scene_path: String) -> void:
 	_clue_despawn_local()
@@ -332,7 +497,7 @@ func _on_end_day_closed() -> void:
 	# вернуть управление камерой
 	if cam:
 		cam.cancel_drag()
-		cam.set_drag_enabled(true)
+		_cam_set_drag(true)
 
 func _on_end_day_confirmed() -> void:
 	var candidate := "d_end_of_day_%d" % GameManager.day
@@ -346,14 +511,14 @@ func _on_end_day_confirmed() -> void:
 				# ← ВОТ ЭТО ВЕРНЁТ СКРОЛЛ ПОСЛЕ ПОДТВЕРЖДЕНИЯ
 				if cam:
 					cam.cancel_drag()
-					cam.set_drag_enabled(true)
+					_cam_set_drag(true)
 		, CONNECT_ONE_SHOT)
 	else:
 		_finish_day_flow()
 		_fix_stuck_mouse()
 		if cam:
 			cam.cancel_drag()
-			cam.set_drag_enabled(true)
+			_cam_set_drag(true)
 
 	GameManager.play_dialog(dlg_id, self)
 
@@ -404,12 +569,12 @@ func _maybe_play_intro() -> void:
 		GameManager.play_dialog("d_intro_berit_sally")
 	
 func _on_manage_button_pressed() -> void:
-	cam.set_drag_enabled(false)
+	_cam_set_drag(false)
 	cam.cancel_drag()
 	manage_menu.call("open_centered")
 
 func _on_management_menu_popup_hide() -> void:
-	cam.set_drag_enabled(true)
+	_cam_set_drag(true)
 	cam.cancel_drag()
 
 func _on_dialog_finished(id: String, res: Dictionary) -> void:
@@ -421,7 +586,7 @@ func _on_room_2_input_event(viewport: Node, event: InputEvent, shape_idx: int) -
 		if GameManager.timeline_used_today:
 			GameManager.toast("Сегодня вы уже занимались делами.")
 		else:
-			_on_back_to_timeline_pressed()
+			_open_room2_menu(event.position)
 
 
 func _on_room_3_input_event(viewport: Node, event: InputEvent, shape_idx: int) -> void:    if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -432,7 +597,7 @@ func _on_room_3_input_event(viewport: Node, event: InputEvent, shape_idx: int) -
 			end_day_confirm.popup_centered_ratio(0.25)
 			if cam:
 				cam.cancel_drag()
-				cam.set_drag_enabled(false)
+				_cam_set_drag(false)
 			_start_input_quarantine(0.25) 
 
 func _release_mouse_buttons() -> void:
