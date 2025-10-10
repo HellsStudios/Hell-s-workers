@@ -13,10 +13,17 @@
 	  },
 	  "base_cost": {"satiety": 8, "stamina": 12},
 	  "require": {"qual":{"courier":1}, "forbid_conds":["injury"]},
-	  "affinity": {
-		"mood": {"per10": 2},
-		"conds": {"injury": -20, "dante_low_batt": -10}
+	"affinity": {
+	  "mood":  { "per10": 1 },
+	  "conds": { "injury": -12, "fatigue": -8 },
+	  "stats": {
+		"satiety_per10": 1,
+		"stamina_per10": 1,
+		"hp_per10": 0,
+		"mana_per10": 0
 	  },
+	  "jitter": 0
+	},
 	  "events": [
 		{
 		  "id": "late_train",
@@ -59,6 +66,9 @@
 		  ]
 		}
 	  ],
+	  "on_complete": {
+	"on_success": { "dialog": "dlg_test" }
+  },
 	  "next_def": "intro_battle",
 	  "tags": ["quest"]
 	},

@@ -3,47 +3,103 @@
 	{
 	  "id": "d_intro_berit_sally",
 	  "bg": "res://Assets/bg/warehouse_evening.png",
-	  "music": "res://Audio/music/tension.ogg",
+	  "music": "res://Audio/music/bg_1.ogg",
 	  "start": "p1",
 	  "nodes": {
 		"p1": {
 		  "type": "line",
 		  "left":  { "char":"Berit", "pose":"angry",   "dim": false },
-		  "right": { "char":"Sally", "pose":"happy",   "dim": true  },
-		  "speaker": "Berit",
-		  "text": "Как же ты достал! Ты нам всю клиентуру распугаешь!",
-		  "sfx": "res://Audio/sfx/dialog_punch.ogg",
+		  "right": { "char":"Sally", "pose":"happy_right",   "dim": true  },
+		  "speaker": "Берит",
+		  "text": "Салли!",
+		  "sfx": "res://Audio/sfx/click.ogg",
+		  "next": "p11"
+		},
+		"p11": {
+		  "type": "line",
+		  "left":  { "char":"Berit", "pose":"pointing",   "dim": false },
+		  "right": { "char":"Sally", "pose":"happy_right",   "dim": true  },
+		  "speaker": "Берит",
+		  "text": "Ты почему орешь так рано!",
+		  "sfx": "res://Audio/sfx/Berit Gurk.ogg",
 		  "next": "p2"
 		},
 		"p2": {
 		  "type": "line",
+		  "left":  { "char":"Berit", "pose":"thinking",   "dim": false },
+		  "right": { "char":"Sally", "pose":"happy_right",   "dim": true  },
+		  "speaker": "Берит",
+		  "text": "Только не говори, что у нас что-то закончилось, я еще вчера закупился всем в магазине.",
+		  "sfx": "res://Audio/sfx/Berit Ehhh.ogg",
+		  "next": "p22"
+		},
+		"p22": {
+		  "type": "line",
+		  "left":  { "char":"Berit", "pose":"thinking",   "dim": true  },
+		  "right": { "char":"Sally", "pose":"welcome_right", "dim": false },
+		  "speaker": "Салли",
+		  "text": "Доброе утро, Беречка!",
+		  "sfx": "res://Audio/sfx/Sally aha.ogg",
+		  "next": "p23"
+		},
+		"p23": {
+		  "type": "line",
+		  "left":  { "char":"Berit", "pose":"thinking",   "dim": true  },
+		  "right": { "char":"Sally", "pose":"hehe_right", "dim": false },
+		  "speaker": "Салли",
+		  "text": "Ты просто представить себе не можешь! К нам во двор забралась здоровеннкая белка-демон!",
+		  "sfx": "res://Audio/sfx/Sally grr.ogg",
+		  "next": "p24"
+		},
+		"p24": {
+		  "type": "line",
 		  "left":  { "char":"Berit", "pose":"angry",   "dim": true  },
-		  "right": { "char":"Sally", "pose":"annoyed", "dim": false },
-		  "speaker": "Sally",
-		  "text": "Подумаешь, парочку детишек бутылкой напугал... Коктейль Молотова в первый раз видят?",
+		  "right": { "char":"Sally", "pose":"please_right", "dim": false },
+		  "speaker": "Салли",
+		  "text": "Он наверное к нам забрел случайно, все дела... Но не могли бы мы на нем... потренироваться? Это же буквально паразит, а вдруг он топтал наш огород?",
+		  "sfx": "res://Audio/sfx/Sally weak.ogg",
 		  "next": "c1"
 		},
 		"c1": {
 		  "type": "choice",
-		  "prompt": "Как ответить Салли?",
+		  "prompt": "Желаете поучаствовать в небольшом тренировочном бою?",
 		  "options": [
-			{ "text": "Ладно, перегнул. Извини.",
-			  "goto": "end_good",
-			  "effects": { "mood": {"Sally": 5} }
-			},
-			{ "text": "Да расслабься ты.",
-			  "goto": "p3",
+			{ "text": "Нет, пошли работать.",
+			  "goto": "end_good1",
 			  "effects": { "mood": {"Sally": -5} }
+			},
+			{ "text": "Да, почему бы и нет?",
+			  "goto": "pbattle1",
+			  "effects": { "mood": {"Sally": 5} }
 			}
 		  ]
 		},
-		"p3": {
+		"pbattle1": {
 		  "type": "line",
-		  "left":  { "char":"Berit", "pose":"angry",   "dim": true  },
-		  "right": { "char":"Sally", "pose":"annoyed", "dim": false },
-		  "speaker": "Sally",
-		  "text": "А может лучше ты?!",
+		  "left":  { "char":"Berit", "pose":"normal",   "dim": true  },
+		  "right": { "char":"Sally", "pose":"happy_right", "dim": false },
+		  "speaker": "Салли",
+		  "text": "Как замечательно! Спасибо!",
+		  "sfx": "res://Audio/sfx/Sally he4 letsbegin.ogg",
+		  "next": "pbattle2"
+		},
+		"pbattle2": {
+		  "type": "line",
+		  "left":  { "char":"Berit", "pose":"normal",   "dim": true  },
+		  "right": { "char":"Sally", "pose":"hehe_right", "dim": false },
+		  "speaker": "Салли",
+		  "text": "Нет ничего лучше криков по утрам!",
+		  "sfx": "res://Audio/sfx/Sally comeonmore.ogg",
 		  "next": "end_battle"
+		},
+		"end_good1": {
+		  "type": "line",
+		  "left":  { "char":"Berit", "pose":"thinking",   "dim": true  },
+		  "right": { "char":"Sally", "pose":"annoyed_right", "dim": false },
+		  "speaker": "Салли",
+		  "text": "Жаль, я то уже настроился его хвост пустить на шарфик... Ну значит в другой раз.",
+		  "sfx": "res://Audio/sfx/Sally grr.ogg",
+		  "next": "end_good"
 		},
 		"end_good": {
 		  "type": "end",
@@ -54,7 +110,13 @@
 		"end_battle": {
 		  "type": "end",
 		  "effects": {
-			"battle": { "enemies": ["Yezt"], "exit_Scene": "res://Scenes/timeline.tscn" },
+			"battle": { "enemies": ["Yezt"], 
+			"exit_Scene": "res://Scenes/timeline.tscn",   
+			"rewards": {
+				"krestli": 30,
+				"items": [ { "id":"sandwich", "count":2 } ],
+				"supplies": [ { "id":"milk_pack", "count":1 } ]
+			  }},
 			"add_condition": { "Berit": ["injury"] },
 			"give_quests": ["q_blackmail", "q_cook_intro"]
 		  }
@@ -95,6 +157,22 @@
 		  "effects": { "mood": { "Sally": 2 } }
 		}
 	  }
+	},
+	{
+  "id": "dlg_test",
+  "bg": "res://Assets/bg/warehouse_evening.png",
+  "start": "t1",
+  "nodes": {
+	"t1": {
+	  "type": "line",
+	  "speaker": "Система",
+	  "text": "Тестовый диалог сработал.",
+	  "next": "end"
+	},
+	"end": {
+	  "type": "end"
 	}
+  }
+}
   ]
 }
