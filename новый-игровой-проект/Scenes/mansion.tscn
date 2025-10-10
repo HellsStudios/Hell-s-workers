@@ -119,6 +119,74 @@ character_path = NodePath("..")
 [node name="Marker2D" type="Marker2D" parent="Camera2D/Clickables" groups=["clue_point"]]
 position = Vector2(1560, 936)
 
+[node name="Room4" type="Area2D" parent="Camera2D" groups=["rooms"]]
+position = Vector2(1523.05, 296)
+scale = Vector2(1.35, 1.35)
+collision_mask = 0
+
+[node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room4"]
+scale = Vector2(0.2, 0.2)
+texture = ExtResource("3_umc7y")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room4"]
+shape = SubResource("RectangleShape2D_umc7y")
+
+[node name="Room5" type="Area2D" parent="Camera2D" groups=["rooms"]]
+position = Vector2(2320, 896)
+scale = Vector2(1.35, 1.35)
+collision_mask = 0
+
+[node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room5"]
+scale = Vector2(0.2, 0.2)
+texture = ExtResource("3_umc7y")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room5"]
+shape = SubResource("RectangleShape2D_umc7y")
+
+[node name="Room6" type="Area2D" parent="Camera2D" groups=["rooms"]]
+position = Vector2(471.87, 596.355)
+collision_mask = 0
+
+[node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room6"]
+scale = Vector2(0.2, 0.2)
+texture = ExtResource("3_umc7y")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room6"]
+shape = SubResource("RectangleShape2D_umc7y")
+
+[node name="Room7" type="Area2D" parent="Camera2D" groups=["rooms"]]
+position = Vector2(868.888, 596.355)
+collision_mask = 0
+
+[node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room7"]
+scale = Vector2(0.2, 0.2)
+texture = ExtResource("3_umc7y")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room7"]
+shape = SubResource("RectangleShape2D_umc7y")
+
+[node name="Room8" type="Area2D" parent="Camera2D" groups=["rooms"]]
+position = Vector2(1458.11, 859.99)
+collision_mask = 0
+
+[node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room8"]
+scale = Vector2(0.2, 0.2)
+texture = ExtResource("3_umc7y")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room8"]
+shape = SubResource("RectangleShape2D_umc7y")
+
+[node name="Room9" type="Area2D" parent="Camera2D" groups=["rooms"]]
+position = Vector2(1855.13, 859.99)
+collision_mask = 0
+
+[node name="Sprite2D" type="Sprite2D" parent="Camera2D/Room9"]
+scale = Vector2(0.2, 0.2)
+texture = ExtResource("3_umc7y")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Camera2D/Room9"]
+shape = SubResource("RectangleShape2D_umc7y")
+
 [node name="UI" type="CanvasLayer" parent="."]
 
 [node name="PanelResources" type="Panel" parent="UI"]
@@ -871,6 +939,12 @@ layout_mode = 2
 [connection signal="input_event" from="Camera2D/Room2" to="." method="_on_room_2_input_event"]
 [connection signal="input_event" from="Camera2D/Room3" to="." method="_on_room_3_input_event"]
 [connection signal="input_event" from="Camera2D/Room1" to="." method="_on_room_1_input_event"]
+[connection signal="input_event" from="Camera2D/Room4" to="." method="_on_room_4_input_event"]
+[connection signal="input_event" from="Camera2D/Room5" to="." method="_on_room_5_input_event"]
+[connection signal="input_event" from="Camera2D/Room6" to="." method="_on_room_6_input_event"]
+[connection signal="input_event" from="Camera2D/Room7" to="." method="_on_room_7_input_event"]
+[connection signal="input_event" from="Camera2D/Room8" to="." method="_on_room_8_input_event"]
+[connection signal="input_event" from="Camera2D/Room9" to="." method="_on_room_9_input_event"]
 [connection signal="button_down" from="UI/PanelDay/NextDayButton" to="." method="_on_NextPhaseButton_pressed"]
 [connection signal="pressed" from="UI/PanelDay/NextDayButton" to="." method="_on_next_day_button_pressed"]
 [connection signal="pressed" from="UI/TopBar/ManageButton" to="." method="_on_manage_button_pressed"]

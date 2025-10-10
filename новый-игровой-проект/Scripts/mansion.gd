@@ -6,6 +6,31 @@ extends Node2D
 var room2_menu: PopupPanel
 var room2_menu_vbox: VBoxContainer
 
+# Универсальные контейнеры для меню комнат
+var room_menus: Dictionary = {}        # { 2: PopupPanel, 3: PopupPanel, ... }
+var room_menu_vboxes: Dictionary = {}  # { id: VBoxContainer }
+
+# Пресеты пунктов меню для комнат (2 — реальный переход в таймлайн, остальные — плейсхолдеры)
+const DEFAULT_ROOM_MENU := [
+	{"text":"Заглушка A", "action":"placeholder"},
+	{"text":"Заглушка B", "action":"placeholder"},
+	{"sep":true},
+	{"text":"Отмена", "action":"close"},
+]
+const ROOM_MENU_PRESETS := {
+	2: [
+		{"text":"К таймлайну", "action":"timeline"},
+		{"sep":true},
+		{"text":"Отмена", "action":"close"},
+	],
+	4: DEFAULT_ROOM_MENU,
+	5: DEFAULT_ROOM_MENU,
+	6: DEFAULT_ROOM_MENU,
+	7: DEFAULT_ROOM_MENU,
+	8: DEFAULT_ROOM_MENU,
+	9: DEFAULT_ROOM_MENU,
+}
+
 # Подтверждение «в таймлайн?»
 var timeline_confirm: ConfirmationDialog
 # ====== DBG: мышь/ввод после закрытия попапа ======
@@ -37,6 +62,139 @@ const CONDITION_PRIORITY := {
 	"weird_day": 40,
 	"default": 0              # если ничего не подошло
 }
+
+func _open_room_menu(room_id: int, mouse_pos: Vector2 = Vector2.ZERO) -> void:
+	if not room_menus.has(room_id): return
+	var panel: PopupPanel = room_menus[room_id]
+	var vbox: VBoxContainer = room_menu_vboxes[room_id]
+
+	if cam:
+		cam.cancel_drag()
+		_cam_set_drag(false)
+	_start_input_quarantine(0.20)
+
+	var vp := get_viewport_rect()
+	var size := Vector2(300, 0)
+	var pos := mouse_pos + Vector2(16, 16)
+	pos.x = clamp(pos.x, 0.0, vp.size.x - size.x)
+	pos.y = clamp(pos.y, 0.0, vp.size.y - 200.0)
+
+	vbox.modulate = Color(1,1,1,0)
+	panel.position = Vector2i(pos) + Vector2i(0, 8)
+	panel.popup()
+
+	var tw := create_tween()
+	tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(panel, "position", Vector2i(pos), 0.15)
+	tw.parallel().tween_property(vbox, "modulate:a", 1.0, 0.15)
+
+
+func _close_room_menu(room_id: int) -> void:
+	if not room_menus.has(room_id): return
+	var panel: PopupPanel = room_menus[room_id]
+	var vbox: VBoxContainer = room_menu_vboxes[room_id]
+	if not panel.visible: return
+
+	var tw := create_tween()
+	tw.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(vbox, "modulate:a", 0.0, 0.12)
+	tw.parallel().tween_property(panel, "position", panel.position + Vector2i(0, 6), 0.12)
+	tw.tween_callback(Callable(panel, "hide"))
+
+	if cam:
+		cam.cancel_drag()
+		_cam_set_drag(true)
+
+
+# Совместимые прокси для комнаты 2 (чтобы не переписывать существующие вызовы)
+func _open_room2_menu(mouse_pos: Vector2 = Vector2.ZERO) -> void:
+	_open_room_menu(2, mouse_pos)
+
+func _close_room2_menu() -> void:
+	_close_room_menu(2)
+
+
+# Нажали «К таймлайну» в ЛЮБОЙ комнате
+func _on_room_menu_timeline_pressed(room_id: int) -> void:
+	_close_room_menu(room_id)
+	# Используем ИМЕННО оригинальный путь
+	_on_ToTimelineButton_pressed()
+
+
+# === УНИВЕРСАЛЬНЫЙ БИЛДЕР МЕНЮ КОМНАТЫ ===
+func _build_room_menu(room_id: int, items: Array) -> void:
+	var name := "Room%dMenu" % room_id
+
+	# берём из сцены, если уже существует
+	var path := "UI/%s" % name
+	var panel: PopupPanel = get_node_or_null(path) as PopupPanel
+	if panel == null:
+		panel = PopupPanel.new()
+		panel.name = name
+		# чтобы drag выключался, когда окно скрыли любым способом
+		panel.visibility_changed.connect(func():
+			if not panel.visible:
+				_on_management_menu_popup_hide()
+		)
+		if has_node("UI"):
+			$UI.add_child(panel)
+		else:
+			add_child(panel)
+
+	# VBox внутрь
+	var vbox := VBoxContainer.new()
+	vbox.custom_minimum_size = Vector2(280, 0)
+	panel.add_child(vbox)
+
+	# Сохраняем ссылки
+	room_menus[room_id] = panel
+	room_menu_vboxes[room_id] = vbox
+	if room_id == 2:
+		room2_menu = panel
+		room2_menu_vbox = vbox
+
+	# Закрытие по крестику/любому hide
+	panel.close_requested.connect(func(): _close_room_menu(room_id))
+	if panel.has_signal("popup_hide") and not panel.popup_hide.is_connected(func(): _close_room_menu(room_id)):
+		panel.popup_hide.connect(func(): _close_room_menu(room_id))
+
+	# Сборка пунктов из пресета
+	for it in items:
+		if typeof(it) != TYPE_DICTIONARY: continue
+		if it.get("sep", false):
+			vbox.add_child(HSeparator.new())
+			continue
+
+		var b := Button.new()
+		b.text = String(it.get("text", "Опция"))
+		var action := String(it.get("action","placeholder"))
+
+		match action:
+			"timeline":
+				b.pressed.connect(func():
+					_on_room_menu_timeline_pressed(room_id)
+				)
+			"close":
+				b.pressed.connect(func():
+					_close_room_menu(room_id)
+				)
+			_:
+				# Плейсхолдер
+				b.pressed.connect(func():
+					_close_room_menu(room_id)
+					if Engine.has_singleton("Toasts"):
+						Toasts.ok("Пункт «%s» (комната %d) — заглушка" % [b.text, room_id])
+					else:
+						print("[Mansion] placeholder '%s' in room %d" % [b.text, room_id])
+				)
+
+		vbox.add_child(b)
+
+
+# === СОВМЕСТИМАЯ ОБЁРТКА ДЛЯ ВТОРОЙ КОМНАТЫ (НЕ УДАЛЯТЬ) ===
+func _build_room2_menu() -> void:
+	_build_room_menu(2, ROOM_MENU_PRESETS[2])
+
 
 func _clue_spawn_points() -> Array:
 	var pts: Array = []
@@ -278,7 +436,7 @@ func _on_ToTimelineButton_pressed() -> void:
 	# заходим днём
 	GameManager.current_phase = 1
 	_apply_phase_visuals()
-	get_tree().change_Scene_to_file("res://Scenes/timeline.tscn")
+	get_tree().change_scene_to_file("res://Scenes/timeline.tscn")
 
 
 func _ready() -> void:
@@ -334,10 +492,40 @@ func _ready() -> void:
 			manage_menu.close_requested.connect(_on_management_menu_popup_hide)
 
 	_build_room2_menu()
+	for id in [4,5,6,7,8,9]:
+		if ROOM_MENU_PRESETS.has(id):
+			_build_room_menu(id, ROOM_MENU_PRESETS[id])
 	_build_timeline_confirm()
 	if cam:
 		cam.cancel_drag()
 		cam.set_drag_enabled(true)
+
+func _on_room_4_input_event(_vp, event: InputEvent, _shape_idx: int) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_open_room_menu(4, event.position)
+
+func _on_room_5_input_event(_vp, event: InputEvent, _shape_idx: int) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_open_room_menu(5, event.position)
+
+func _on_room_6_input_event(_vp, event: InputEvent, _shape_idx: int) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_open_room_menu(6, event.position)
+
+func _on_room_7_input_event(_vp, event: InputEvent, _shape_idx: int) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_open_room_menu(7, event.position)
+		
+func _on_room_8_input_event(_vp, event: InputEvent, _shape_idx: int) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_open_room_menu(8, event.position)
+
+func _on_room_9_input_event(_vp, event: InputEvent, _shape_idx: int) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_open_room_menu(9, event.position)
+
+# ... и так далее для 6,7,8
+
 
 func _on_room2_menu_timeline_pressed() -> void:
 	# Сначала закрываем меню (чтобы не лежало поверх подтверждения)
@@ -376,29 +564,7 @@ func _on_timeline_closed() -> void:
 		_cam_set_drag(true)
 
 
-func _open_room2_menu(mouse_pos: Vector2 = Vector2.ZERO) -> void:
-	if room2_menu == null:
-		return
 
-	if cam:
-		cam.cancel_drag()
-		_cam_set_drag(false)
-	_start_input_quarantine(0.20)
-
-	var vp := get_viewport_rect()
-	var size := Vector2(300, 0)
-	var pos := mouse_pos + Vector2(16, 16)
-	pos.x = clamp(pos.x, 0.0, vp.size.x - size.x)
-	pos.y = clamp(pos.y, 0.0, vp.size.y - 200.0)
-
-	room2_menu_vbox.modulate = Color(1, 1, 1, 0)
-	room2_menu.position = Vector2i(pos) + Vector2i(0, 8)
-	room2_menu.popup()
-
-	var tw := create_tween()
-	tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
-	tw.tween_property(room2_menu,      "position",  Vector2i(pos), 0.15)   # позицию tween'им у окна
-	tw.parallel().tween_property(room2_menu_vbox, "modulate:a", 1.0, 0.15) # альфу tween'им у контента
 
 func _ui_blocked() -> bool:
 	return (is_instance_valid(room2_menu) and room2_menu.visible) \
@@ -410,63 +576,6 @@ func _cam_set_drag(v: bool) -> void:
 	if cam:
 		cam.cancel_drag()
 		cam.set_drag_enabled(v)
-
-func _close_room2_menu() -> void:
-	if room2_menu == null or not room2_menu.visible:
-		return
-	var tw := create_tween()
-	tw.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
-	tw.tween_property(room2_menu_vbox, "modulate:a", 0.0, 0.12)
-	tw.parallel().tween_property(room2_menu, "position", room2_menu.position + Vector2i(0, 6), 0.12)
-	tw.tween_callback(Callable(room2_menu, "hide"))
-
-	if cam:
-		cam.cancel_drag()
-		_cam_set_drag(true)
-
-
-
-func _build_room2_menu() -> void:
-	# если уже есть в сцене — возьмём, иначе создадим
-	room2_menu = $UI/Room2Menu if has_node("UI/Room2Menu") else null
-	if room2_menu == null:
-		room2_menu = PopupPanel.new()
-		room2_menu.visibility_changed.connect(func(): if not room2_menu.visible: _on_management_menu_popup_hide())
-		room2_menu.name = "Room2Menu"
-		# ставим в UI-дерево, чтобы было поверх
-		if has_node("UI"):
-			$UI.add_child(room2_menu)
-		else:
-			add_child(room2_menu)
-
-	# Внутренности
-	room2_menu_vbox = VBoxContainer.new()
-	room2_menu_vbox.custom_minimum_size = Vector2(280, 0)
-	room2_menu.add_child(room2_menu_vbox)
-	room2_menu.close_requested.connect(_close_room2_menu)
-	if room2_menu.has_signal("popup_hide") and not room2_menu.popup_hide.is_connected(_close_room2_menu):
-		room2_menu.popup_hide.connect(_close_room2_menu)
-
-	# Кнопка 1: Таймлайн
-	var b_timeline := Button.new()
-	b_timeline.text = "К таймлайну"
-	b_timeline.pressed.connect(_on_room2_menu_timeline_pressed)
-	room2_menu_vbox.add_child(b_timeline)
-
-	# (запас для будущих опций)
-	# var b_something := Button.new()
-	# b_something.text = "Другая опция"
-	# b_something.pressed.connect(_on_room2_menu_other_pressed)
-	# room2_menu_vbox.add_child(b_something)
-
-	# Разделитель + Закрыть
-	var sep := HSeparator.new()
-	room2_menu_vbox.add_child(sep)
-
-	var b_close := Button.new()
-	b_close.text = "Отмена"
-	b_close.pressed.connect(_close_room2_menu)
-	room2_menu_vbox.add_child(b_close)
 
 
 func _build_timeline_confirm() -> void:
