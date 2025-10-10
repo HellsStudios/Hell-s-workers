@@ -150,7 +150,7 @@ var _path_index: Dictionary = {}  # lowercased full path -> real-cased full path
 # ─── КЛЮ ──────────────────────────────────────────────────────────────
 signal clue_spawn_requested(scene_path: String)  # Mansion загрузит и заспавнит
 signal clue_clear_requested()
-
+signal battle_finished(result: Dictionary)
 const CLUE_SCENE_PATH := "res://Scenes/clue.tscn"   # путь к твоей Clue.tscn
 var   CLUE_BASE_CHANCE := 1.00                      # 30% шанс утром
 const CLUE_DIALOG_FIRST  := "clue_first_time"       # id в dialogs.json
@@ -309,7 +309,7 @@ func start_new_day() -> void:
 			# Случайные состояния (если у тебя есть такая механика)
 			if has_method("add_condition") and randi()%100 < 10:
 				add_condition(nick, "fatigue") # пример: 10% «усталость»
-
+	_clear_daily_tasks_everywhere() 
 	# Обновить пул дейликов
 	refresh_daily_tasks()
 	_apply_auto_conditions_at_day_start()
@@ -637,7 +637,14 @@ func end_battle(victory: bool, participants: Array = []) -> void:
 	get_tree().change_scene_to_file(back)
 	await get_tree().process_frame
 	await Fader.fade_in(0.25)
-
+	# >>> ДОБАВЛЕНО: сообщаем таймлайну, что бой завершён
+	if has_signal("battle_finished"):
+		var result := {
+			"victory": victory,
+			"origin": origin,   # {"kind":"timeline_task","hero":...,"inst_id":...} если из таймлайна
+			"rewards": rw
+		}
+		emit_signal("battle_finished", result)
 
 
 func _tlog(msg: String, ctx: Dictionary = {}) -> void:
@@ -718,24 +725,25 @@ func finish_task(hero: String, inst_id: int, success: bool) -> Dictionary:
 	emit_signal("schedule_changed")
 
 	# чейнинг followup (как было у тебя)
-	var next_def := String(def.get("next_def",""))
-	if next_def != "":
-		spawn_task_instance(next_def, {"kind":"quest"})
-		emit_signal("task_pool_changed")
-	_tlog("finish_task ENTER", {"hero": hero, "inst": inst_id, "success": success})
+	if success:
+		var next_def := String(def.get("next_def",""))
+		if next_def != "":
+			spawn_task_instance(next_def, {"kind":"quest"})
+			emit_signal("task_pool_changed")
+		_tlog("finish_task ENTER", {"hero": hero, "inst": inst_id, "success": success})
 
-	# после подсчёта rewards:
-	_tlog("finish_task rewards", {"hero": hero, "inst": inst_id, "rewards": rewards})
+		# после подсчёта rewards:
+		_tlog("finish_task rewards", {"hero": hero, "inst": inst_id, "rewards": rewards})
 
-	# сразу после unschedule_task(...)
-	_tlog("finish_task unscheduled", {"hero": hero, "inst": inst_id})
+		# сразу после unschedule_task(...)
+		_tlog("finish_task unscheduled", {"hero": hero, "inst": inst_id})
 
-	# перед followup (если есть):
-	if next_def != "":
-		_tlog("finish_task followup spawn", {"inst": inst_id, "next_def": next_def})
-	var mark_q := String(def.get("quest_complete",""))
-	if mark_q != "":
-		set_quest_completed(mark_q, true)
+		# перед followup (если есть):
+		if next_def != "":
+			_tlog("finish_task followup spawn", {"inst": inst_id, "next_def": next_def})
+		var mark_q := String(def.get("quest_complete",""))
+		if mark_q != "":
+			set_quest_completed(mark_q, true)
 	return rewards
 
 func claim_completed_quest_rewards() -> Array:
@@ -1213,7 +1221,11 @@ func _complete_task(hero: String, s: Dictionary) -> void:
 	var def_id := String(s.get("def_id",""))
 	var def: Dictionary = task_defs.get(def_id, {})
 	var outcome := _evaluate_outcome(hero, def)
-
+	var on_comp: Dictionary = def.get("on_complete", {})
+	var branch_key := "on_success" if bool(outcome.get("success", true)) else "on_fail"
+	var eff: Dictionary = on_comp.get(branch_key, {})
+	if eff.has("dialog"): outcome["dialog"] = String(eff["dialog"])
+	if eff.has("battle"): outcome["battle"] = eff["battle"]  # целиком словарь
 	_apply_costs_and_rewards(hero, def, outcome)
 	emit_signal("task_completed", hero, int(s.get("inst_id", 0)), outcome)
 
@@ -2583,6 +2595,29 @@ func get_conditions_for_all() -> Dictionary:
 		map[name] = get_conditions_for(String(name))
 	return map
 
+func _clear_daily_tasks_everywhere() -> void:
+	# 1) Пул
+	var keep_pool: Array = []
+	for inst in active_task_pool:
+		if typeof(inst) != TYPE_DICTIONARY: 
+			continue
+		if String(inst.get("kind","")) != "daily":
+			keep_pool.append(inst)
+	active_task_pool = keep_pool
+
+	# 2) Расписание
+	for hero in scheduled.keys():
+		var arr: Array = scheduled.get(hero, [])
+		var keep_row: Array = []
+		for s in arr:
+			if typeof(s) != TYPE_DICTIONARY: 
+				continue
+			if String(s.get("kind","")) != "daily":
+				keep_row.append(s)
+		scheduled[hero] = keep_row
+
+	emit_signal("task_pool_changed")
+	emit_signal("schedule_changed")
 
 func _ready() -> void:
 	_build_path_index()

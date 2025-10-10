@@ -431,6 +431,7 @@ func _build_room2_menu() -> void:
 	room2_menu = $UI/Room2Menu if has_node("UI/Room2Menu") else null
 	if room2_menu == null:
 		room2_menu = PopupPanel.new()
+		room2_menu.visibility_changed.connect(func(): if not room2_menu.visible: _on_management_menu_popup_hide())
 		room2_menu.name = "Room2Menu"
 		# ставим в UI-дерево, чтобы было поверх
 		if has_node("UI"):

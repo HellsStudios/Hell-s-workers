@@ -36,7 +36,7 @@ var _scene_switching := false
 var _event_queue: Array = []            # [{ev, hero, inst}]
 
 enum PopupMode { NONE, EVENT, INFO }
-
+var _effects_waiting := false   # пока true — финиш-попапы не показываем
 
 var _pause_stack := 0
 
@@ -134,9 +134,8 @@ func _queue_finish(hero: String, inst_id: int, success: bool, rewards: Dictionar
 	_finish_queue.append({"hero":hero, "inst":inst_id, "success":success, "rewards":rewards})
 
 func _show_next_popup() -> void:
-	if _popup_busy:
+	if _popup_busy or _effects_waiting:
 		return
-	# приоритет: сначала финал задач, затем события
 	if _finish_queue.size() > 0:
 		var f: Dictionary = _finish_queue.pop_front()
 		_popup_busy = true
@@ -146,6 +145,7 @@ func _show_next_popup() -> void:
 		var e: Dictionary = _event_queue.pop_front()
 		_popup_busy = true
 		_show_event(e["ev"], String(e["hero"]), int(e["inst"]))
+
 
 
 func _format_rewards_bb(rew: Dictionary) -> String:
@@ -180,7 +180,8 @@ func _queue_day_end(sum: Dictionary) -> void:
 	_try_show_popup()
 
 func _try_show_popup() -> void:
-	if _popup_busy or _popup_queue.is_empty(): return
+	if _popup_busy or _popup_queue.is_empty() or _effects_waiting:
+		return
 	_popup_busy = true
 	var req: Dictionary = _popup_queue.pop_front()
 	match String(req.get("kind","")):
@@ -499,7 +500,15 @@ func _ready() -> void:
 		popup.close_requested.connect(_on_event_close_requested)
 
 	# спрятать встроенный ОК — будем юзать свои кнопки
+	# Диалог завершён (сигнатуры могут отличаться, поэтому оборачиваем)
+	if GameManager.has_signal("dialog_finished"):
+		if not GameManager.dialog_finished.is_connected(func(id, payload := {}): _on__dialog_finished_effect(payload)):
+			GameManager.dialog_finished.connect(func(id, payload := {}): _on__dialog_finished_effect(payload))
 
+	# Бой завершён (пусть присылает один словарь result)
+	if GameManager.has_signal("battle_finished"):
+		if not GameManager.battle_finished.is_connected(func(result := {}): _on__battle_finished_effect(result)):
+			GameManager.battle_finished.connect(func(result := {}): _on__battle_finished_effect(result))
 
 		
 	if GameManager.has_method("register_timeline"):
@@ -531,10 +540,13 @@ func _advance_one_slot() -> void:
 func _on_task_finished(hero: String, inst_id: int, success: bool, rewards: Dictionary) -> void:
 	_clear_event_buttons()
 	_redraw_schedule()
-	_popup_queue.append({"kind":"finish","hero":hero,"inst":inst_id,"success":success,"rewards":rewards})
-	_try_show_popup()
+
+	# ⬇️ раньше здесь было _popup_queue.append(...)+_try_show_popup()
+	_queue_finish(hero, inst_id, success, rewards)   # копим в отдельной очереди
+	_show_next_popup()                                # пусть решает с приоритетами/флагами
+
 	_event_seen.erase(inst_id)
-	# busy снялся (слот ушёл за конец) — дёргаем обновление UI
+
 	if GameManager.has_signal("conditions_changed"):
 		GameManager.emit_signal("conditions_changed", hero)
 
@@ -559,6 +571,18 @@ func _on_task_started(hero: String, inst_id: int) -> void:
 	if GameManager.has_signal("conditions_changed"):
 		GameManager.emit_signal("conditions_changed", hero)
 
+func _on__dialog_finished_effect(payload: Dictionary = {}) -> void:
+	# диалог закончен — можно продолжать
+	_effects_waiting = false
+	pop_pause()
+	_show_next_popup()
+
+func _on__battle_finished_effect(result: Dictionary = {}) -> void:
+	# бой закончен — можно продолжать
+	_effects_waiting = false
+	pop_pause()
+	_show_next_popup()
+
 
 func _on_task_completed(hero: String, inst_id: int, outcome: Dictionary) -> void:
 	print("[UI] task_completed hero=", hero, " inst=", inst_id, " success=", bool(outcome.get("success", true)))
@@ -569,6 +593,28 @@ func _on_task_completed(hero: String, inst_id: int, outcome: Dictionary) -> void
 	else:
 		msg += "провал"
 	print("[TL] ", msg, " hero=", hero, " inst=", inst_id)
+		# --- ДОБАВЛЕНО: если GameManager прислал «что сыграть до попапа», запускаем это сейчас
+	var has_dialog = outcome.has("dialog") and typeof(outcome["dialog"]) == TYPE_STRING and outcome["dialog"] != ""
+	var has_battle = outcome.has("battle") and typeof(outcome["battle"]) == TYPE_DICTIONARY and not outcome["battle"].is_empty()
+
+	if has_dialog or has_battle:
+		_effects_waiting = true
+		running = false
+		push_pause()
+		if popup.visible: popup.hide()
+		if has_dialog and GameManager.has_method("play_dialog"):
+			GameManager.play_dialog(String(outcome["dialog"]), self)
+			return
+
+		if has_battle and GameManager.has_method("push_battle"):
+			var bdef: Dictionary = outcome["battle"]
+			var enemies: Array = bdef.get("enemies", [])
+			var meta := {
+				"rewards": bdef.get("rewards", {}),
+				"origin": {"kind":"timeline_task", "hero": hero, "inst_id": inst_id}
+			}
+			GameManager.push_battle(enemies, meta)
+			return
 
 func _clear_event_buttons() -> void:
 	# убрать все кнопки-опции, снять фокус, гарантировать отсутствие подвесов
