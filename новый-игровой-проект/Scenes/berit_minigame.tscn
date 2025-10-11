@@ -1,0 +1,216 @@
+[gd_scene load_steps=3 format=3 uid="uid://dciqrsdj27nn1"]
+
+[ext_resource type="Script" uid="uid://pxs7k5t6ot8x" path="res://Scenes/berit_minigame.gd" id="1_m0tt4"]
+[ext_resource type="Texture2D" uid="uid://b1ii2cvhql6n" path="res://Assets/bg/berit_room.png" id="2_un4ey"]
+
+[node name="Berit_minigame" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_m0tt4")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="ToastProxy" type="Control" parent="CanvasLayer"]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="BG" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_un4ey")
+
+[node name="Root" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="TopBar" type="HBoxContainer" parent="Root"]
+layout_mode = 2
+alignment = 1
+
+[node name="Title" type="Label" parent="Root/TopBar"]
+layout_mode = 2
+text = "Серые схемы"
+
+[node name="HSeparator" type="HSeparator" parent="Root/TopBar"]
+layout_mode = 2
+
+[node name="Stamina" type="Label" parent="Root/TopBar"]
+layout_mode = 2
+text = "Стамина: 12"
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/TopBar"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+
+[node name="ExitBtn" type="Button" parent="Root/TopBar"]
+layout_mode = 2
+text = "Выйти"
+
+[node name="Meters" type="HBoxContainer" parent="Root"]
+layout_mode = 2
+theme_override_constants/separation = 50
+alignment = 1
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/Meters"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Root/Meters/VBoxContainer"]
+layout_mode = 2
+text = "Выручка"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="CashBar" type="ProgressBar" parent="Root/Meters/VBoxContainer"]
+modulate = Color(0, 1, 0, 1)
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+
+[node name="VBoxContainer2" type="VBoxContainer" parent="Root/Meters"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Root/Meters/VBoxContainer2"]
+layout_mode = 2
+text = "Риск"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="RiskBar" type="ProgressBar" parent="Root/Meters/VBoxContainer2"]
+modulate = Color(1, 0, 0, 1)
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+
+[node name="VBoxContainer3" type="VBoxContainer" parent="Root/Meters"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Root/Meters/VBoxContainer3"]
+layout_mode = 2
+text = "Добропорядочность"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="FairBar" type="ProgressBar" parent="Root/Meters/VBoxContainer3"]
+modulate = Color(0.53524, 0.686283, 1, 1)
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+
+[node name="Setup" type="HBoxContainer" parent="Root"]
+layout_mode = 2
+alignment = 1
+
+[node name="Pool" type="VBoxContainer" parent="Root/Setup"]
+layout_mode = 2
+
+[node name="PoolTitle" type="Label" parent="Root/Setup/Pool"]
+layout_mode = 2
+text = "Выбранные фирмы (пул)"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ScrollContainer" type="ScrollContainer" parent="Root/Setup/Pool"]
+custom_minimum_size = Vector2(500, 300)
+layout_mode = 2
+
+[node name="PoolGrid" type="GridContainer" parent="Root/Setup/Pool/ScrollContainer"]
+custom_minimum_size = Vector2(500, 200)
+layout_mode = 2
+
+[node name="VSeparator" type="VSeparator" parent="Root/Setup"]
+layout_mode = 2
+
+[node name="Params" type="VBoxContainer" parent="Root/Setup"]
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="Root/Setup/Params"]
+layout_mode = 2
+
+[node name="CardsLabel" type="Label" parent="Root/Setup/Params/HBoxContainer"]
+layout_mode = 2
+text = "Карт за раунд:"
+
+[node name="CardsSpin" type="SpinBox" parent="Root/Setup/Params/HBoxContainer"]
+layout_mode = 2
+
+[node name="CostLabel" type="Label" parent="Root/Setup/Params"]
+layout_mode = 2
+text = "Стоимость стамины: 3×N = …"
+
+[node name="StartBtn" type="Button" parent="Root/Setup/Params"]
+layout_mode = 2
+text = "Начать"
+
+[node name="PlayArea" type="Panel" parent="Root"]
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/PlayArea"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -116.0
+offset_right = 116.0
+offset_bottom = 62.0
+grow_horizontal = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PlayArea/MarginContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="PlayHint" type="Label" parent="Root/PlayArea/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "подсказки/состояния"
+horizontal_alignment = 1
+
+[node name="Row" type="HBoxContainer" parent="Root/PlayArea/MarginContainer/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="HBoxContainer" type="HBoxContainer" parent="Root/PlayArea/MarginContainer/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="DrawBtn" type="Button" parent="Root/PlayArea/MarginContainer/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+text = "Открыть карту"
+
+[node name="FinishBtn" type="Button" parent="Root/PlayArea/MarginContainer/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+text = "Завершить"
+
+[node name="ResultPanel" type="Panel" parent="Root"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/ResultPanel"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+alignment = 1
+
+[node name="ResultTitle" type="Label" parent="Root/ResultPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="ResultText" type="Label" parent="Root/ResultPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="BackBtn" type="Button" parent="Root/ResultPanel/VBoxContainer"]
+layout_mode = 2
+text = "Вернуться в поместье"
+
+[node name="StartConfirm" type="ConfirmationDialog" parent="."]

@@ -6,6 +6,16 @@ extends Node2D
 var room2_menu: PopupPanel
 var room2_menu_vbox: VBoxContainer
 
+const ROOM_OWNER := {
+	2: "Berit",   # комната Берита
+	4: "Sally",
+	5: "Dante",
+	6: "Heavy",
+	7: "Luci",
+	8: "Zeb",
+	9: "Bune",
+}
+
 # Универсальные контейнеры для меню комнат
 var room_menus: Dictionary = {}        # { 2: PopupPanel, 3: PopupPanel, ... }
 var room_menu_vboxes: Dictionary = {}  # { id: VBoxContainer }
@@ -20,6 +30,7 @@ const DEFAULT_ROOM_MENU := [
 const ROOM_MENU_PRESETS := {
 	2: [
 		{"text":"К таймлайну", "action":"timeline"},
+		{"text":"Серые схемы (мини-игра)",  "action":"minigame"},   # ← новый пункт
 		{"sep":true},
 		{"text":"Отмена", "action":"close"},
 	],
@@ -62,6 +73,71 @@ const CONDITION_PRIORITY := {
 	"weird_day": 40,
 	"default": 0              # если ничего не подошло
 }
+
+var minigame_popup: AcceptDialog  # плейсхолдер мини-игры (один на все комнаты)
+
+func _on_room_menu_minigame_pressed(room_id: int) -> void:
+	_close_room_menu(room_id)
+
+	# Проверяем, свободен ли владелец комнаты
+	if not _is_room_owner_free(room_id):
+		var owner := _room_owner_name(room_id)
+		var who := (owner if owner != "" else "Герой")
+		# у вас уже используются тосты; оставлю тот же стиль
+		if GameManager.has_method("toast"):
+			GameManager.toast("%s сейчас занят." % who)
+		else:
+			Toasts.warn("%s сейчас занят." % who)
+		return
+
+	# Ок, свободен — запускаем мини-игру (пока плейсхолдер)
+	_start_minigame(room_id)
+
+
+func _ensure_minigame_popup() -> void:
+	if is_instance_valid(minigame_popup):
+		return
+	minigame_popup = AcceptDialog.new()
+	minigame_popup.name = "MinigamePlaceholder"
+	minigame_popup.title = "Мини-игра (заглушка)"
+	minigame_popup.dialog_text = "Здесь будет мини-игра.\nНажмите «Ок», чтобы закончить и вернуться в поместье."
+	# при закрытии — просто «возврат в поместье» (для реальной мини-игры здесь будет смена сцены обратно)
+	minigame_popup.confirmed.connect(func():
+		# Возврат в поместье (на всякий — стандартным способом)
+		if GameManager.has_method("goto_mansion"):
+			GameManager.goto_mansion()
+		else:
+			get_tree().change_scene_to_file("res://Scenes/mansion.tscn")
+	)
+	if has_node("UI"):
+		$UI.add_child(minigame_popup)
+	else:
+		add_child(minigame_popup)
+
+func _start_minigame(room_id: int) -> void:
+	# Когда появится настоящая мини-игра: здесь можно
+	# if GameManager.has_method("goto_minigame"):
+	#     GameManager.goto_minigame(room_id)
+	#     return
+	# А пока — плейсхолдер-попап:
+	_ensure_minigame_popup()
+	minigame_popup.title = "Мини-игра | Комната %d" % room_id
+	minigame_popup.popup_centered_ratio(0.35)
+
+
+func _room_owner_name(room_id: int) -> String:
+	return String(ROOM_OWNER.get(room_id, ""))
+
+func _is_room_owner_free(room_id: int) -> bool:
+	var owner := _room_owner_name(room_id)
+	if owner == "":
+		return true  # комнаты без владельца считаем «проходными»
+	var conds := _get_conditions_for(owner)
+	for c in conds:
+		if String(c) == "busy":
+			return false
+	return true
+
 
 func _open_room_menu(room_id: int, mouse_pos: Vector2 = Vector2.ZERO) -> void:
 	if not room_menus.has(room_id): return
@@ -120,6 +196,23 @@ func _on_room_menu_timeline_pressed(room_id: int) -> void:
 	# Используем ИМЕННО оригинальный путь
 	_on_ToTimelineButton_pressed()
 
+func _start_berit_minigame() -> void:
+	# Проверка занятости Берита
+	var busy := false
+	if typeof(GameManager) == TYPE_OBJECT and GameManager.has_method("get_conditions_for"):
+		for c in GameManager.get_conditions_for("Berit"):
+			if String(c) == "busy":
+				busy = true; break
+
+	if busy:
+		if Engine.has_singleton("Toasts"):
+			Toasts.warn("Берит сейчас занят.")
+		else:
+			print("[Mansion] Берит занят.")
+		return
+
+	# Переходим в мини-игру
+	get_tree().change_scene_to_file("res://Scenes/berit_minigame.tscn")
 
 # === УНИВЕРСАЛЬНЫЙ БИЛДЕР МЕНЮ КОМНАТЫ ===
 func _build_room_menu(room_id: int, items: Array) -> void:
@@ -173,6 +266,11 @@ func _build_room_menu(room_id: int, items: Array) -> void:
 			"timeline":
 				b.pressed.connect(func():
 					_on_room_menu_timeline_pressed(room_id)
+				)
+			"minigame":                                  # ← НОВОЕ
+				b.pressed.connect(func():
+					_close_room_menu(room_id)
+					_start_berit_minigame()
 				)
 			"close":
 				b.pressed.connect(func():

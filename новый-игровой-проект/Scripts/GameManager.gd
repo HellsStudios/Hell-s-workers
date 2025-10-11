@@ -1372,7 +1372,7 @@ func _apply_auto_conditions_at_day_start() -> void:
 		var mn_max = max(1, res_max(hero, "mana"))
 		var hp_pct := int((res_cur(hero, "hp") * 100) / hp_max)
 		var st_pct := int((res_cur(hero, "stamina") * 100) / st_max)
-		var mn_pct := int((res_cur(hero, "mana") * 100) / mn_max) if (mn_max > 0) else 100
+		var mn_pct := (int((res_cur(hero, "mana") * 100) / mn_max) if mn_max > 0 else 100)
 		var sat    := int(hero_satiety.get(hero, 50))
 		var mood   := int(hero_mood.get(hero, 50))
 
@@ -1382,25 +1382,25 @@ func _apply_auto_conditions_at_day_start() -> void:
 			if auto.is_empty(): continue
 
 			var ok := false
+			var reasons := []
 
-			# Пороговые проверки
-			if auto.has("satiety_le")      and sat  <= int(auto["satiety_le"]):        ok = true
-			if auto.has("mood_le")         and mood <= int(auto["mood_le"]):           ok = true
-			if auto.has("hp_pct_le")       and hp_pct <= int(auto["hp_pct_le"]):       ok = true
-			if auto.has("stamina_pct_le")  and st_pct <= int(auto["stamina_pct_le"]):  ok = true
-			if auto.has("mana_pct_le") and mn_max>0 and mn_pct <= int(auto["mana_pct_le"]): ok = true
+			if auto.has("satiety_le") and sat <= int(auto["satiety_le"]):           ok = true; reasons.append("satiety<=%d" % int(auto["satiety_le"]))
+			if auto.has("mood_le")    and mood <= int(auto["mood_le"]):             ok = true; reasons.append("mood<=%d" % int(auto["mood_le"]))
+			if auto.has("hp_pct_le")  and hp_pct <= int(auto["hp_pct_le"]):         ok = true; reasons.append("hp%%<=%d" % int(auto["hp_pct_le"]))
+			if auto.has("stamina_pct_le") and st_pct <= int(auto["stamina_pct_le"]):ok = true; reasons.append("st%%<=%d" % int(auto["stamina_pct_le"]))
+			if auto.has("mana_pct_le") and mn_max>0 and mn_pct <= int(auto["mana_pct_le"]): ok = true; reasons.append("mn%%<=%d" % int(auto["mana_pct_le"]))
 
-			# По номеру дня (каждый N-й)
 			if not ok and auto.has("day_mod"):
 				var mod = max(1, int(auto["day_mod"]))
 				if day % mod == 0:
-					ok = true
+					ok = true; reasons.append("day_mod=%d" % mod)
 
 			if ok:
+				print("[AUTO-COND] hero=", hero, " +", cid, " reasons=", reasons,
+					" hp%=", hp_pct, " st%=", st_pct, " mn%=", mn_pct, " sat=", sat, " mood=", mood)
 				var days  := int(auto.get("days", 0))
 				var phases:= int(auto.get("phases", 2))
 				add_condition(hero, String(cid), days, phases)
-
 
 
 func advance_phase_after_meal() -> void:
@@ -2619,6 +2619,20 @@ func _clear_daily_tasks_everywhere() -> void:
 	emit_signal("task_pool_changed")
 	emit_signal("schedule_changed")
 
+func get_hero_stamina(hero: String) -> int:
+	return res_cur(hero, "stamina")
+
+func get_hero_stamina_max(hero: String) -> int:
+	return res_max(hero, "stamina")
+
+func spend_stamina(hero: String, v: int) -> bool:
+	if v <= 0: return true
+	var cur := res_cur(hero, "stamina")
+	if cur < v:
+		return false
+	set_res_cur(hero, "stamina", cur - v)
+	return true
+
 func _ready() -> void:
 	_build_path_index()
 	load_heroes("res://Data/characters.json")
@@ -2706,17 +2720,46 @@ func condition_title(id: String) -> String:
 func add_condition(hero: String, id: String, days := 0, phases := 0) -> void:
 	if hero == "" or id == "" or not conditions_db.has(id):
 		return
+
+	# ── ДЕДУП: если уже есть — продлим срок, не создавая дубль
 	var arr: Array = hero_conditions.get(hero, [])
 	var exp_day := day + int(days)
 	var exp_phase := current_phase + int(phases)
 	while exp_phase >= phase_names.size():
 		exp_phase -= phase_names.size()
 		exp_day += 1
-	arr.append({"id": id, "expire_day": exp_day, "expire_phase": exp_phase})
+
+	var updated := false
+	for i in range(arr.size()):
+		var e = arr[i]
+		if String(e.get("id","")) == id:
+			# оставляем максимальный срок
+			var old_d := int(e.get("expire_day", 0))
+			var old_p := int(e.get("expire_phase", 0))
+			if (exp_day > old_d) or (exp_day == old_d and exp_phase > old_p):
+				e["expire_day"] = exp_day
+				e["expire_phase"] = exp_phase
+				arr[i] = e
+			updated = true
+			break
+
+	if not updated:
+		arr.append({"id": id, "expire_day": exp_day, "expire_phase": exp_phase})
+
+	# ── Трассировка «injury»
+	if id == "injury":
+		print("[COND][TRACE] injury add/update hero=", hero,
+			" hp=", res_cur(hero,"hp"), "/", res_max(hero,"hp"),
+			" st=", res_cur(hero,"stamina"), "/", res_max(hero,"stamina"),
+			" sat=", int(hero_satiety.get(hero,50)),
+			" day=", day, " phase=", current_phase,
+			" updated=", updated)
+		print_stack()  # покажет, откуда вызвали
+
 	hero_conditions[hero] = arr
-	print("[COND][ADD] hero=", hero, " +", id, " until D", exp_day, " P", exp_phase, " | store=", hero_conditions[hero])
 	emit_signal("conditions_changed", hero)
 	_clamp_current_to_max_all()
+
 
 func remove_condition(hero: String, id: String) -> void:
 	var arr: Array = hero_conditions.get(hero, [])
