@@ -1,0 +1,11 @@
+{
+			"wash":   {"id":"wash","title":"Прачечная","tag":"услуги","dcash":[5,8],"drisk":[5,8],"dfair":[0,1]},
+			"barber": {"id":"barber","title":"Барбершоп","tag":"наличка","dcash":[3,5],"drisk":0,"dfair":[1,3]},
+			"tour":   {"id":"tour","title":"Тур-агентство","tag":"услуги","dcash":[4,7],"drisk":[6,9],"dfair":0},
+			"cafe":   {"id":"cafe","title":"Кафе-конверт","tag":"наличка","dcash":[2,4],"drisk":0,"dfair":[0,2],"trigger":"react_last_cash"},
+			"shell":  {"id":"shell","title":"Прокладка","tag":"пустышка","dcash":0,"drisk":[-5,-3],"dfair":0},
+			"contract":{"id":"contract","title":"Подрядчик","tag":"подряд","dcash":[8,11],"drisk":[11,13],"dfair":0},
+			"ip":     {"id":"ip","title":"ИП «Смета»","tag":"услуги","dcash":[1,3],"drisk":[-3,-1],"dfair":[2,4]},
+			"courier":{"id":"courier","title":"Курьерка","tag":"наличка","dcash":[3,5],"drisk":[1,2],"dfair":0,"trigger":"bonus_if_services"},
+			"facade": {"id":"facade","title":"Фасад","tag":"пустышка","dcash":0,"drisk":0,"dfair":[4,6],"trigger":"buff_next"},
+}

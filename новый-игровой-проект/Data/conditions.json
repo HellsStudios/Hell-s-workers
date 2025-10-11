@@ -1,22 +1,38 @@
 {
   "conditions": {
-	"dante_low_batt": {
-	  "name": "Разрядка",
-	  "desc": "Энергия на нуле. В бою: нет регена маны. Вне боя — текущая мана обнуляется на смене фазы.",
-	  "stat_mod": { "attack": -3 },
-	  "on_battle_start": ["no_mana_regen"],
-	  "on_phase": { "mana": "zero" }
+	"busy": {
+	  "name": "Занят"
 	},
+	"hungry": {
+	  "name": "Голоден",
+	  "stat_mod": {
+		"max_stamina_pct": -0.20   
+	  },
+	  "auto": { "satiety_le": 20, "phases": 2 }
+	},
+
+	"fatigue": {
+	  "name": "Усталость",
+	  "auto": { "stamina_pct_le": 20 }
+	},
+
 	"injury": {
 	  "name": "Травма",
-	  "desc": "−10 SPD, −10% максимум HP.",
-	  "stat_mod": { "speed": -10, "max_health_pct": -0.10 }
+	  "stat_mod": {
+		"max_hp_pct": -0.20        
+	  },
+	  "auto": { "hp_pct_le": 25 }
 	},
-	"melancholy": {
+
+	"sad": {
 	  "name": "Хандра",
-	  "desc": "−5 ATK, настроение −20.",
-	  "stat_mod": { "attack": -5 },
-	  "mood_delta": -20
+	  "auto": { "mood_le": 20 }
+	},
+
+	"weird_day": {
+	  "name": "Нехороший день",
+	  "on_battle_start": ["barrier_1"],
+	  "auto": { "day_mod": 7, "days": 0, "phases": 2 }
 	}
   }
 }
