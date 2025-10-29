@@ -160,6 +160,43 @@ var _clue_active := false
 var _clue_clicks_total := 0
 var _clue_seen_first := false
 
+signal firms_changed(hero: String)
+
+var _hero_firms: Dictionary = {}  # { "Berit": {"barber": 2, "cafe": 1}, "Sally": {...} }
+
+func _ensure_hero_firms(hero: String) -> void:
+	if not _hero_firms.has(hero):
+		_hero_firms[hero] = {}
+
+func get_firm_count(hero: String, firm_id: String) -> int:
+	_ensure_hero_firms(hero)
+	return int(_hero_firms[hero].get(firm_id, 0))
+
+func set_firm_count(hero: String, firm_id: String, count: int) -> void:
+	_ensure_hero_firms(hero)
+	_hero_firms[hero][firm_id] = max(0, count)
+	emit_signal("firms_changed", hero)
+
+func add_firm(hero: String, firm_id: String, delta: int = 1) -> void:
+	set_firm_count(hero, firm_id, get_firm_count(hero, firm_id) + delta)
+
+func grant_firms(hero: String, pack: Dictionary) -> void:
+	# pack: {"barber":1, "cafe":2}
+	for id in pack.keys():
+		add_firm(hero, String(id), int(pack[id]))
+
+func list_firms(hero: String) -> Dictionary:
+	_ensure_hero_firms(hero)
+	# вернём копию, чтобы снаружи не трогали по ссылке
+	return (_hero_firms[hero] as Dictionary).duplicate(true)
+
+# (по желанию) сахар для Берита:
+func berit_add_firm(id: String, delta := 1) -> void:
+	add_firm("Berit", id, delta)
+
+func berit_grant(pack: Dictionary) -> void:
+	grant_firms("Berit", pack)
+
 func clue_notify_spawned() -> void:
 	_clue_active = true
 
@@ -318,10 +355,160 @@ func start_new_day() -> void:
 	_clue_resolve_unclaimed()   # штраф, если не кликнули вчерашнюю
 	_clue_maybe_spawn()         # шанс заспавнить новую
 
+var garden_state := {
+	"pots": [],                         # массив горшков
+	"last_init_day": 0
+}
+
+# структура горшка:
+# {
+#   "plant_id": "",                    # "" = пуст
+#   "planted_day": 0,
+#   "age": 0,
+#   "water": 0,                        # условные единицы
+#   "fert": 0,
+#   "weeds": 0,
+#   "actions_used_day": -1,            # день, к которому относится счётчик
+#   "actions_used": 0                  # сколько действий СЕГОДНЯ
+# }
+
+func garden_init_if_needed(pots_count: int) -> void:
+	if garden_state.get("pots", []).size() == pots_count:
+		return
+	var arr: Array = []
+	for i in range(pots_count):
+		arr.append({
+			"plant_id": "",
+			"planted_day": 0,
+			"age": 0,
+			"water": 0,
+			"fert": 0,
+			"weeds": 0,
+			"actions_used_day": -1,
+			"actions_used": 0
+		})
+	garden_state["pots"] = arr
+	garden_state["last_init_day"] = day
+
+func garden_tick() -> void:
+	_garden_load_data()
+
+	var st = get_meta("sally_garden_state", {})
+	var pots = st.get("pots", [])
+
+	# суточные изменения как в сцене
+	for i in range(pots.size()):
+		var p = pots[i]
+		var cid := String(p.get("crop_id",""))
+		if cid == "":
+			continue
+
+		# базовые поля с защитой
+		var day_local := int(p.get("day", 0)) + 1
+		var water = clamp(int(p.get("water",50)) - 15, 0, 100)
+		var nutr  = clamp(int(p.get("nutrients",50)) - 8, 0, 100)
+		var weeds = clamp(int(p.get("weeds",0)) + 8, 0, 100)
+		var stress := int(p.get("stress",0))
+		var health := int(p.get("health",100))
+		var mature_in := int(p.get("mature_in", 0))
+
+		# стресс/бафы
+		var water_ok = (water >= 40 and water <= 75)
+		if not water_ok:
+			stress = clamp(stress + 5, 0, 100)
+		if weeds > 50:
+			stress = clamp(stress + 4, 0, 100)
+
+		var cdef = _garden_crops.get(cid, {})
+		for t in p.get("tags", []):
+			if t in cdef.get("fav_topics", []):
+				stress = clamp(stress - 2, 0, 100)
+
+		# здоровье
+		var hp_delta := 0
+		if stress >= 60:
+			hp_delta -= 6
+		if weeds >= 70:
+			hp_delta -= 4
+		if water <= 15 or water >= 90:
+			hp_delta -= 5
+		health = clamp(health + hp_delta, 0, 100)
+
+		var harvest_ready := bool(p.get("harvest_ready", false))
+		if day_local >= mature_in and health > 0:
+			harvest_ready = true
+
+		if health <= 0:
+			pots[i] = _garden_new_empty_pot()
+		else:
+			p["day"] = day_local
+			p["water"] = water
+			p["nutrients"] = nutr
+			p["weeds"] = weeds
+			p["stress"] = stress
+			p["health"] = health
+			p["harvest_ready"] = harvest_ready
+			pots[i] = p
+
+	st["pots"] = pots
+	set_meta("sally_garden_state", st)
+
+	# сброс дневных лимитов на новый день
+	var nd := {
+		"day": day + 1,   # т.к. day увеличится сразу после garden_tick()
+		"actions": {},
+		"lecture": 0,
+		"boost": 0
+	}
+	set_meta("sally_garden_daily", nd)
+
+
+func garden_get_state() -> Dictionary:
+	return garden_state
+
+func garden_set_state(st: Dictionary) -> void:
+	garden_state = st
+
+# ===== Sally Garden: кэш данных =====
+var _garden_data_loaded := false
+var _garden_crops := {}          # id -> def
+
+func _garden_load_data() -> void:
+	if _garden_data_loaded:
+		return
+	var path := "res://Data/garden_data.json"
+	if not FileAccess.file_exists(path):
+		push_warning("[GM][Garden] Нет файла: " + path)
+		_garden_data_loaded = true
+		return
+	var txt := FileAccess.get_file_as_string(path)
+	var parsed = JSON.parse_string(txt)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		push_warning("[GM][Garden] Неверный JSON")
+		_garden_data_loaded = true
+		return
+	for d in parsed.get("crops", []):
+		if typeof(d) == TYPE_DICTIONARY and d.has("id"):
+			_garden_crops[d["id"]] = d
+	_garden_data_loaded = true
+
+func _garden_new_empty_pot() -> Dictionary:
+	return {
+		"crop_id":"", "title":"(пусто)", "day":0,
+		"mature_in": 0,
+		"water":50, "nutrients":50, "stress":0, "health":100,
+		"weeds":0,
+		"last_fert_day": -999,
+		"last_fert_type": "",
+		"tags": [],
+		"harvest_ready": false
+	}
+
 
 # === Конец дня (с диалогом или без него вызывается снаружи)
 func end_day() -> void:
 	emit_signal("day_ended", day)
+	garden_tick()     
 	day += 1
 	start_new_day()
 

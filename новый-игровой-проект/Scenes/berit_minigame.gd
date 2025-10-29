@@ -60,8 +60,13 @@ var FIRM_DEFS := {}   # перезапишем из JSON
 func _init_copy_limits() -> void:
 	copy_limits.clear()
 	for id in FIRM_DEFS.keys():
-		var def: Dictionary = FIRM_DEFS[id]
-		copy_limits[id] = int(def.get("max_copies", 2))  # дефолт 2, можно задать в JSON
+		var owned := 0
+		if typeof(GameManager) == TYPE_OBJECT and GameManager.has_method("get_firm_count"):
+			owned = int(GameManager.get_firm_count(HERO, String(id)))
+		# если хочешь мягкий дефолт, когда фирма «общедоступна», раскомментируй след. строку:
+		# if owned == 0: owned = int(FIRM_DEFS[id].get("max_copies", 0))
+		copy_limits[id] = owned  # 0 => недоступна
+
 
 func _roll_int(x) -> int:
 	# x может быть числом или массивом [min, max]
@@ -344,6 +349,14 @@ func _ready() -> void:
 		_toasts_warn("Берит занят — сейчас не до схем.")
 		# можно сразу заблокировать старт
 		start_btn.disabled = true
+	if typeof(GameManager) == TYPE_OBJECT and not GameManager.is_connected("firms_changed", _on_firms_changed):
+		GameManager.firms_changed.connect(_on_firms_changed)
+
+func _on_firms_changed(hero: String) -> void:
+	if hero != HERO: return
+	_init_copy_limits()
+	_build_pool_ui()
+	_rebuild_selection_view()
 
 func _on_again_pressed() -> void:
 	# очистить следы прошлого раунда
@@ -430,34 +443,32 @@ func _build_pool_ui() -> void:
 	for id in FIRM_DEFS.keys():
 		var def: Dictionary = FIRM_DEFS[id]
 		var title := String(def.get("title", id))
+		var limit := int(copy_limits.get(id, 0))
+		if limit <= 0:
+			# хочешь – можно показывать «серым»:
+			# var lock := Button.new(); lock.text = title + " (нет копий)"; lock.disabled = true; pool_grid.add_child(lock)
+			continue
+
 		var b := Button.new()
 		b.text = title
-		b.tooltip_text = _effects_text(def)
+		b.tooltip_text = _effects_text(def) + "\nДоступных копий: %d" % limit
 		b.pressed.connect(func():
-			# общий лимит слотов
 			if selected_pool.size() >= _max_cards():
-				_toasts_warn("Слотов больше нет (%d/%d). Убери карту или увеличь N." % [selected_pool.size(), _max_cards()])
+				_toasts_warn("Слотов больше нет (%d/%d)." % [selected_pool.size(), _max_cards()])
 				return
-
-			# лимит по конкретной фирме
 			var cur := 0
 			for x in selected_pool:
-				if String(x) == id:
-					cur += 1
-			var limit := int(copy_limits.get(id, 2))
+				if String(x) == id: cur += 1
 			if cur >= limit:
-				_toasts_warn("Лимит копий для «%s» достигнут (%d)." % [title, limit])
+				_toasts_warn("Лимит копий «%s» исчерпан (%d)." % [title, limit])
 				return
-
-			# добавляем
 			selected_pool.append(id)
 			_rebuild_selection_view()
 			_update_cost_label()
-			_toasts_ok("Добавлено в пул: %s (всего: %d)" % [title, selected_pool.size()])
-			print("[FIRMS][UI] add_to_pool id=", id, " total=", selected_pool.size(), " of_this=", cur+1, "/", limit)
+			_toasts_ok("Добавлено: %s (%d/%d)" % [title, cur+1, limit])
 		)
 		pool_grid.add_child(b)
-		built += 1
+
 
 	var clear := Button.new()
 	clear.text = "Очистить пул"

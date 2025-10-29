@@ -34,8 +34,18 @@ const ROOM_MENU_PRESETS := {
 		{"sep":true},
 		{"text":"Отмена", "action":"close"},
 	],
-	4: DEFAULT_ROOM_MENU,
-	5: DEFAULT_ROOM_MENU,
+	4: [
+		{"text":"Сад на крыше", "action":"sally_garden"},
+		{"text":"Мини-игра Салли", "action":"minigame"},
+		{"sep":true},
+		{"text":"Отмена", "action":"close"},
+	],
+	5: [
+		{"text":"Основа (Данте)", "action":"placeholder"},
+		{"text":"Мини-игра Данте", "action":"minigame"},
+		{"sep":true},
+		{"text":"Отмена", "action":"close"},
+	],
 	6: DEFAULT_ROOM_MENU,
 	7: DEFAULT_ROOM_MENU,
 	8: DEFAULT_ROOM_MENU,
@@ -64,6 +74,7 @@ const COND_BUSY: StringName = "busy"
 @onready var Clickables := $Camera2D/Clickables
 @onready var clue_holder: Node = Clickables      # положим Клю туда же, где и кликаблсы
 var _active_clue: Node2D = null                  # текущая инстанция
+
 const CONDITION_PRIORITY := {
 	COND_BUSY: 100,           # Занят — скрыть всё
 	"injury": 80,
@@ -75,6 +86,41 @@ const CONDITION_PRIORITY := {
 }
 
 var minigame_popup: AcceptDialog  # плейсхолдер мини-игры (один на все комнаты)
+
+var _active_clue_scene_path: String = ""
+
+func _save_clue_restore_meta() -> void:
+	if not is_instance_valid(_active_clue):
+		return
+	var n := _active_clue as Node2D
+	if n == null:
+		return
+	var gp := n.global_position
+	var info := {
+		"scene_path": _active_clue_scene_path,
+		"x": gp.x,
+		"y": gp.y
+	}
+	get_tree().set_meta("clue_restore_info", info)
+
+func _clear_clue_restore_meta() -> void:
+	if get_tree().has_meta("clue_restore_info"):
+		get_tree().set_meta("clue_restore_info", null)
+	
+
+func _restore_clue_if_needed() -> void:
+	var info = get_tree().get_meta("clue_restore_info", null)
+	if info == null:
+		return
+	var scene_path := String(info.get("scene_path", ""))
+	if scene_path == "" or not ResourceLoader.exists(scene_path):
+		_clear_clue_restore_meta()
+		return
+	_clue_spawn_local(scene_path)
+	if is_instance_valid(_active_clue) and _active_clue is Node2D:
+		var gp := Vector2(float(info.get("x", 0.0)), float(info.get("y", 0.0)))
+		(_active_clue as Node2D).global_position = gp
+	_clear_clue_restore_meta()
 
 func _on_room_menu_minigame_pressed(room_id: int) -> void:
 	_close_room_menu(room_id)
@@ -107,6 +153,7 @@ func _ensure_minigame_popup() -> void:
 		if GameManager.has_method("goto_mansion"):
 			GameManager.goto_mansion()
 		else:
+			_save_clue_restore_meta()  
 			get_tree().change_scene_to_file("res://Scenes/mansion.tscn")
 	)
 	if has_node("UI"):
@@ -115,15 +162,28 @@ func _ensure_minigame_popup() -> void:
 		add_child(minigame_popup)
 
 func _start_minigame(room_id: int) -> void:
-	# Когда появится настоящая мини-игра: здесь можно
-	# if GameManager.has_method("goto_minigame"):
-	#     GameManager.goto_minigame(room_id)
-	#     return
-	# А пока — плейсхолдер-попап:
-	_ensure_minigame_popup()
-	minigame_popup.title = "Мини-игра | Комната %d" % room_id
-	minigame_popup.popup_centered_ratio(0.35)
+	# если у комнаты есть реальная сцена — идём в неё, иначе плейсхолдер
+	var scene_path := ""
+	match room_id:
+		2:
+			scene_path = "res://Scenes/berit_minigame.tscn"
+		4:
+			scene_path = "res://Scenes/sally_minigame.tscn"  # пока «мнимая» сцена; можешь создать пустую с AcceptDialog
+		5:
+			scene_path = "res://Scenes/dante_minigame.tscn"
+		_:
+			scene_path = ""
 
+	if scene_path != "" and ResourceLoader.exists(scene_path):
+		_save_clue_restore_meta()  
+		get_tree().change_scene_to_file(scene_path)
+	else:
+		# временный попап-плейсхолдер
+		_ensure_minigame_popup()
+		var who := _room_owner_name(room_id)
+		minigame_popup.title = "Мини-игра | %s" % (who if who != "" else "Комната %d" % room_id)
+		minigame_popup.dialog_text = "Здесь будет мини-игра %s.\nНажмите «Ок», чтобы вернуться." % who
+		minigame_popup.popup_centered_ratio(0.35)
 
 func _room_owner_name(room_id: int) -> String:
 	return String(ROOM_OWNER.get(room_id, ""))
@@ -212,6 +272,7 @@ func _start_berit_minigame() -> void:
 		return
 
 	# Переходим в мини-игру
+	_save_clue_restore_meta()  
 	get_tree().change_scene_to_file("res://Scenes/berit_minigame.tscn")
 
 # === УНИВЕРСАЛЬНЫЙ БИЛДЕР МЕНЮ КОМНАТЫ ===
@@ -267,10 +328,14 @@ func _build_room_menu(room_id: int, items: Array) -> void:
 				b.pressed.connect(func():
 					_on_room_menu_timeline_pressed(room_id)
 				)
-			"minigame":                                  # ← НОВОЕ
+			"sally_garden":
 				b.pressed.connect(func():
 					_close_room_menu(room_id)
-					_start_berit_minigame()
+					_start_sally_garden()
+				)
+			"minigame":
+				b.pressed.connect(func():
+					_on_room_menu_minigame_pressed(room_id)
 				)
 			"close":
 				b.pressed.connect(func():
@@ -317,6 +382,8 @@ func _clue_spawn_local(scene_path: String) -> void:
 
 	var scn := load(scene_path)
 	var node = scn.instantiate()
+	_active_clue_scene_path = scene_path  # ← запомним, откуда инстансим
+
 	var p = pts[randi() % pts.size()]
 
 	if p is Node2D and node is Node2D:
@@ -332,12 +399,15 @@ func _clue_spawn_local(scene_path: String) -> void:
 	if node.has_signal("picked"):
 		node.picked.connect(func():
 			GameManager.clue_notify_picked()
+			_clear_clue_restore_meta()   # ← если забрали — кеш не нужен
 		)
+
 	if node.has_signal("vanished"):
 		node.vanished.connect(func():
 			if _active_clue == node:
 				_active_clue = null
 			GameManager.clue_notify_vanished()
+			_clear_clue_restore_meta()   # ← пропал — тоже чистим
 		)
 
 	# на всякий — если у Clue нет AnimationPlayer.spawn, можно подсветить появление
@@ -534,8 +604,12 @@ func _on_ToTimelineButton_pressed() -> void:
 	# заходим днём
 	GameManager.current_phase = 1
 	_apply_phase_visuals()
+	_save_clue_restore_meta()  
 	get_tree().change_scene_to_file("res://Scenes/timeline.tscn")
 
+func _start_sally_garden() -> void:
+	_save_clue_restore_meta()  
+	get_tree().change_scene_to_file("res://Scenes/sally_garden.tscn")
 
 func _ready() -> void:
 		# 1) построить индекс кликабельных узлов и сразу всё спрятать
@@ -550,6 +624,7 @@ func _ready() -> void:
 	set_process(true)  # нужно для таймового логирования
 	# ... остальное как у тебя было ...
 	_apply_phase_visuals()
+	GameManager.berit_grant({"barber": 1, "cafe": 2})
 	GameManager.add_or_update_quest("q_intro", "Первый день", "Осмотрись в поместье.")
 	GameManager.add_or_update_quest("q_bag", "Собери сумку", "Переложи 3 предмета герою.")
 	GameManager.add_codex_entry("Печать", "Официальная печать Берита — тяжёлая.")
@@ -597,6 +672,7 @@ func _ready() -> void:
 	if cam:
 		cam.cancel_drag()
 		cam.set_drag_enabled(true)
+	_restore_clue_if_needed()
 
 func _on_room_4_input_event(_vp, event: InputEvent, _shape_idx: int) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -653,6 +729,7 @@ func _on_timeline_confirmed() -> void:
 	if GameManager.has_method("goto_timeline"):
 		GameManager.goto_timeline()
 	else:
+		_save_clue_restore_meta()  
 		get_tree().change_Scene_to_file("res://Scenes/timeline.tscn")
 
 func _on_timeline_closed() -> void:

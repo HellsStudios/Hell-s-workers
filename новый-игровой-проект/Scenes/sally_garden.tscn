@@ -1,0 +1,139 @@
+[gd_scene load_steps=3 format=3 uid="uid://disnou0dck5lh"]
+
+[ext_resource type="Script" uid="uid://bucwqgqclg6dn" path="res://Scenes/sally_garden.gd" id="1_3g5l3"]
+[ext_resource type="Texture2D" uid="uid://b1ii2cvhql6n" path="res://Assets/bg/berit_room.png" id="1_7mcvi"]
+
+[node name="Control" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_3g5l3")
+
+[node name="BG" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("1_7mcvi")
+
+[node name="Root" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="HBox" type="HBoxContainer" parent="Root"]
+layout_mode = 2
+alignment = 1
+
+[node name="Left" type="VBoxContainer" parent="Root/HBox"]
+custom_minimum_size = Vector2(500, 500)
+layout_mode = 2
+alignment = 1
+
+[node name="TopBar" type="HBoxContainer" parent="Root/HBox/Left"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+alignment = 1
+
+[node name="Title" type="Label" parent="Root/HBox/Left/TopBar"]
+layout_mode = 2
+text = "Сад на крыше: Салли"
+
+[node name="ExitBtn" type="Button" parent="Root/HBox/Left/TopBar"]
+custom_minimum_size = Vector2(20, 0)
+layout_mode = 2
+text = "Выйти"
+
+[node name="PotsScroll" type="ScrollContainer" parent="Root/HBox/Left"]
+custom_minimum_size = Vector2(600, 300)
+layout_mode = 2
+
+[node name="PostGrid" type="GridContainer" parent="Root/HBox/Left/PotsScroll"]
+custom_minimum_size = Vector2(50, 20)
+layout_mode = 2
+columns = 3
+
+[node name="DayLog" type="RichTextLabel" parent="Root/HBox/Left"]
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+
+[node name="Right" type="VBoxContainer" parent="Root/HBox"]
+custom_minimum_size = Vector2(500, 500)
+layout_mode = 2
+alignment = 1
+
+[node name="SelLabel" type="Label" parent="Root/HBox/Right"]
+layout_mode = 2
+text = "Выбрано: -"
+
+[node name="ActionsPanel" type="Panel" parent="Root/HBox/Right"]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 6
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/HBox/Right/ActionsPanel"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="PlantBtn" type="MenuButton" parent="Root/HBox/Right/ActionsPanel/VBoxContainer"]
+layout_mode = 2
+text = "Посадить"
+
+[node name="WaterBtn" type="MenuButton" parent="Root/HBox/Right/ActionsPanel/VBoxContainer"]
+layout_mode = 2
+text = "Полить"
+
+[node name="FertBtn" type="MenuButton" parent="Root/HBox/Right/ActionsPanel/VBoxContainer"]
+layout_mode = 2
+text = "Удобрить"
+
+[node name="WeedBtn" type="Button" parent="Root/HBox/Right/ActionsPanel/VBoxContainer"]
+layout_mode = 2
+text = "Прополка"
+
+[node name="TherapyBtn" type="MenuButton" parent="Root/HBox/Right/ActionsPanel/VBoxContainer"]
+layout_mode = 2
+text = "Терапия"
+
+[node name="HarvestBtn" type="Button" parent="Root/HBox/Right/ActionsPanel/VBoxContainer"]
+layout_mode = 2
+text = "Собрать урожай"
+
+[node name="RemoveBtn" type="Button" parent="Root/HBox/Right/ActionsPanel/VBoxContainer"]
+layout_mode = 2
+text = "Удалить/очистить горшок"
+
+[node name="HSep" type="HSeparator" parent="Root/HBox/Right"]
+layout_mode = 2
+
+[node name="DayLimits" type="Label" parent="Root/HBox/Right"]
+layout_mode = 2
+text = "Действия на горшок: X/2 …"
+
+[node name="GlobalPanel" type="Panel" parent="Root/HBox/Right"]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 6
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/HBox/Right/GlobalPanel"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+alignment = 1
+
+[node name="LectureBtn" type="MenuButton" parent="Root/HBox/Right/GlobalPanel/VBoxContainer"]
+layout_mode = 2
+text = "Групповая лекция"
+
+[node name="BoostBtn" type="MenuButton" parent="Root/HBox/Right/GlobalPanel/VBoxContainer"]
+layout_mode = 2
+text = "Буст дня"
