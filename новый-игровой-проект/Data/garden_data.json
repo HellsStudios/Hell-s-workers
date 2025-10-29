@@ -1,0 +1,89 @@
+{
+  "pots_default": 6,
+
+  "fertilizers":[
+	{"id":"compost","title":"Компост","effects":{"nutrients":20,"stress":-2}},
+	{"id":"ash","title":"Зола","effects":{"nutrients":16,"stress":1,"tag":"necrotic"}},
+	{"id":"bone_meal","title":"Костная мука","effects":{"nutrients":18,"stress":2,"tag":"necrotic"}},
+	{"id":"nitrogen","title":"Азотные","effects":{"nutrients":22,"stress":0}},
+	{"id":"phosphor","title":"Фосфорные","effects":{"nutrients":22,"stress":0}},
+	{"id":"potassium","title":"Калийные","effects":{"nutrients":22,"stress":0}}
+  ],
+
+  "topics":[
+	{"id":"spooky","title":"Страшилки","stress":4,"tag_add":"spooky"},
+	{"id":"soothing","title":"Успокаивающе","stress":-5,"tag_add":"soothing"},
+	{"id":"discipline","title":"Дисциплина","stress":-1,"tag_add":"discipline"},
+	{"id":"insight","title":"Лекция/практикум","stress":-2,"tag_add":"insight"},
+	{"id":"chatter","title":"Болтовня","stress":-1,"tag_add":"chatter"}
+  ],
+
+  "crops":[
+	{
+	  "id":"tomato","title":"Помидоры",
+	  "mature_days":[6,7],
+	  "water_need":[1,1],
+	  "fert_cooldown":3,
+	  "fav_ferts":["compost","ash"],
+	  "fav_topics":["insight","chatter"],
+	  "specials":[
+		{"need_tags":["insight"], "need_health":70, "special_item":"rational_tomato", "grants":[{"type":"class_xp","class":"Тактика","amount":1}]}
+	  ]
+	},
+	{
+	  "id":"cucumber","title":"Огурцы",
+	  "mature_days":[5,6],
+	  "water_need":[1,2],
+	  "fert_cooldown":2,
+	  "fav_ferts":["nitrogen"],
+	  "fav_topics":["chatter","soothing"],
+	  "specials":[
+		{"need_tags":["chatter"], "need_health":70, "special_item":"social_cucumber", "grants":[{"type":"class_xp","class":"Связи","amount":1}]}
+	  ]
+	},
+	{
+	  "id":"pattypan","title":"Патиссон",
+	  "mature_days":[7,8],
+	  "water_need":[1,1],
+	  "fert_cooldown":3,
+	  "fav_ferts":["phosphor"],
+	  "fav_topics":["insight"],
+	  "specials":[
+		{"need_tags":["insight"], "need_health":75, "special_item":"wise_pattypan", "grants":[{"type":"class_xp","class":"Аналитика","amount":1}]}
+	  ]
+	},
+	{
+	  "id":"carrot","title":"Морковь",
+	  "mature_days":[1,2],
+	  "water_need":[0,1],
+	  "fert_cooldown":4,
+	  "fav_ferts":["ash","bone_meal"],
+	  "fav_topics":["spooky"],
+	  "specials":[
+		{"need_tags":["spooky"], "need_fert_any":["ash","bone_meal"], "special_item":"creepy_carrot", "grants":[{"type":"qual_xp","who":"Sally","qual":"cooking","amount":2}]}
+	  ]
+	},
+	{
+	  "id":"pepper","title":"Перец",
+	  "mature_days":[6,7],
+	  "water_need":[1,1],
+	  "fert_cooldown":3,
+	  "fav_ferts":["potassium"],
+	  "fav_topics":["discipline"],
+	  "specials":[
+		{"need_tags":["discipline"], "need_health":75, "special_item":"hard_pepper", "grants":[{"type":"class_xp","class":"Стойкость","amount":1}]}
+	  ]
+	},
+	{
+	  "id":"basil","title":"Базилик",
+	  "mature_days":[4,4],
+	  "water_need":[1,1],
+	  "fert_cooldown":3,
+	  "fav_ferts":["compost"],
+	  "fav_topics":["soothing"],
+	  "specials":[
+		{"need_tags":["soothing"], "need_health":70, "special_item":"calming_basil", "grants":[{"type":"heal","cond":"sad","days":1}]}
+	  ]
+	}
+  ]
+}
